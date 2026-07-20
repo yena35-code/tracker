@@ -5,6 +5,12 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>오늘 올라옴?</title>
 <link href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=IBM+Plex+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet" />
+<link rel="manifest" href="manifest.json" />
+<meta name="theme-color" content="#0D1321" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="오늘 올라옴?" />
+<link rel="apple-touch-icon" href="apple-touch-icon.png" />
 <style>
   :root {
     --bg: #0D1321; --card: #131A2C; --card2: #0F1526; --line: #222B45;
@@ -53,6 +59,9 @@
   .show-info { flex: 1; }
   .show .name { font-weight: 700; font-size: 15px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
   .epn { font-size: 12px; color: var(--muted); font-weight: 400; }
+  .show.done { opacity: .45; }
+  .chk { background: none; border: 1px solid var(--line); color: var(--dim); border-radius: 8px; min-width: 30px; height: 30px; font-size: 13px; padding: 0; }
+  .chk.on { background: var(--amber); border-color: var(--amber); color: var(--bg); }
   .overlay { position: fixed; inset: 0; background: rgba(13,19,33,0.97); z-index: 50; display: none; flex-direction: column; padding: 20px; }
   .overlay.open { display: flex; }
   .searchbar { display: flex; gap: 8px; max-width: 720px; margin: 0 auto; width: 100%; }
@@ -112,6 +121,9 @@ const PLATFORMS = [
 
 let shows = [];
 let browseList = [];
+let watched = new Set();
+try { watched = new Set(JSON.parse(localStorage.getItem("ott-watched") || "[]")); } catch (e) {}
+const saveWatched = () => { try { localStorage.setItem("ott-watched", JSON.stringify([...watched])); } catch (e) {} };
 try { shows = JSON.parse(localStorage.getItem("ott-shows") || "[]"); } catch (e) { shows = []; }
 const save = () => { try { localStorage.setItem("ott-shows", JSON.stringify(shows)); } catch (e) {} };
 
@@ -151,10 +163,23 @@ const attachProviders = (list) => Promise.all(list.map(async (r) => {
 const fetchShow = async (id) => {
   const d = await tmdb(`/tv/${id}`, "&append_to_response=watch/providers");
   const kr = d["watch/providers"]?.results?.KR;
+  // 시즌 전체 회차를 조회해 이번 주 여러 회차(금토 드라마 등)를 모두 잡음
+  let upcoming = [];
+  const seasonNum = (d.next_episode_to_air || d.last_episode_to_air || {}).season_number;
+  if (seasonNum) {
+    try {
+      const season = await tmdb(`/tv/${id}/season/${seasonNum}`);
+      upcoming = (season.episodes || [])
+        .filter((e) => e.air_date && ddayOf(e.air_date) >= 0)
+        .map((e) => ({ season_number: e.season_number, episode_number: e.episode_number, air_date: e.air_date }))
+        .slice(0, 6);
+    } catch (e) {}
+  }
   return {
     id: d.id, name: d.name, status: d.status,
     nextEp: d.next_episode_to_air || null,
     lastEp: d.last_episode_to_air || null,
+    upcoming,
     providers: matchPlatforms([...(kr?.flatrate || []), ...(kr?.ads || [])]),
   };
 };
@@ -173,17 +198,19 @@ const predictEp = (s) => {
   return { season_number: s.lastEp.season_number, episode_number: epNum, air_date: date.toISOString().slice(0, 10), predicted: true };
 };
 
-const showCard = (s, isToday) => {
-  const ep = s._ep || s.nextEp;
+const showCard = (s, ep, isToday) => {
   const chips = s.providers.length > 0
     ? s.providers.map((p) => `<span class="chip" style="color:${p.color};border:1px solid ${p.color}">${p.label} · ${p.timeHint}</span>`).join("")
     : `<span class="none">5개 플랫폼 미제공 (정보 없음)</span>`;
+  const key = ep ? `${s.id}-s${ep.season_number}e${ep.episode_number}` : "";
+  const done = key && watched.has(key);
   return `
-    <div class="show ${isToday ? "today" : ""}">
+    <div class="show ${isToday ? "today" : ""} ${done ? "done" : ""}">
       <div class="show-info">
-        <div class="name">${isToday ? '<span class="dot"></span>' : ""}${esc(s.name)}${ep ? `<span class="epn">${ep.season_number}시즌 ${ep.episode_number}화${ep.predicted ? " (예상)" : ""}</span>` : ""}</div>
+        <div class="name">${isToday && !done ? '<span class="dot"></span>' : ""}${esc(s.name)}${ep ? `<span class="epn">${ep.season_number}시즌 ${ep.episode_number}화${ep.predicted ? " (예상)" : ""}</span>` : ""}</div>
         <div class="chips">${chips}</div>
       </div>
+      ${key ? `<button class="chk ${done ? "on" : ""}" onclick="toggleWatched('${key}')" title="봤어요">✓</button>` : ""}
       <button class="del" onclick="removeShow(${s.id})">✕</button>
     </div>`;
 };
@@ -193,14 +220,15 @@ const render = () => {
   const later = [], rest = [];
   shows.forEach((s) => {
     const ended = s.status === "Ended" || s.status === "Canceled";
-    const ep = ended ? null : (s.nextEp || predictEp(s));
-    s._ep = ep;
-    const dd = ep ? ddayOf(ep.air_date) : null;
-    if (!ended && dd !== null && dd >= 0 && dd <= 6) byDay[dd].push(s);
-    else if (!ended && dd !== null && dd > 6) later.push(s);
+    let eps = !ended && s.upcoming && s.upcoming.length ? s.upcoming : [];
+    if (!eps.length && !ended && s.nextEp) eps = [s.nextEp];
+    if (!eps.length && !ended) { const p = predictEp(s); if (p) eps = [p]; }
+    const thisWeek = eps.filter((e) => { const dd = ddayOf(e.air_date); return dd >= 0 && dd <= 6; });
+    if (thisWeek.length) thisWeek.forEach((e) => byDay[ddayOf(e.air_date)].push({ s, ep: e }));
+    else if (eps.length) later.push({ s, ep: eps[0] });
     else rest.push({ ...s, ended });
   });
-  later.sort((a, b) => ddayOf(a._ep.air_date) - ddayOf(b._ep.air_date));
+  later.sort((a, b) => ddayOf(a.ep.air_date) - ddayOf(b.ep.air_date));
 
   const todayCount = byDay[0].length;
   $("subline").textContent = todayCount > 0 ? `오늘 올라오는 프로그램 ${todayCount}개` : "오늘 예정된 업로드 없음";
@@ -221,15 +249,15 @@ const render = () => {
         ${isToday ? '<span class="daytag">오늘</span>' : ""}
       </div>`;
     html += byDay[d].length
-      ? byDay[d].map((s) => showCard(s, isToday)).join("")
+      ? byDay[d].map(({ s, ep }) => showCard(s, ep, isToday)).join("")
       : `<div class="dayempty">—</div>`;
   }
   if (later.length) {
     html += `<div class="dayhead"><span class="dayname">다음 주 이후</span></div>`;
-    html += later.map((s) => `
+    html += later.map(({ s, ep }) => `
       <div class="show">
         <div class="show-info">
-          <div class="name">${esc(s.name)}<span class="epn">${s._ep.season_number}시즌 ${s._ep.episode_number}화${s._ep.predicted ? " (예상)" : ""} · ${fmtDate(s._ep.air_date)} (D-${ddayOf(s._ep.air_date)})</span></div>
+          <div class="name">${esc(s.name)}<span class="epn">${ep.season_number}시즌 ${ep.episode_number}화${ep.predicted ? " (예상)" : ""} · ${fmtDate(ep.air_date)} (D-${ddayOf(ep.air_date)})</span></div>
           <div class="chips">${s.providers.map((p) => `<span class="chip" style="color:${p.color};border:1px solid ${p.color}">${p.label}</span>`).join("") || '<span class="none">OTT 정보 없음</span>'}</div>
         </div>
         <button class="del" onclick="removeShow(${s.id})">✕</button>
@@ -283,6 +311,11 @@ window.addShow = async (id) => {
 };
 
 window.removeShow = (id) => { shows = shows.filter((s) => s.id !== id); save(); render(); };
+
+window.toggleWatched = (key) => {
+  if (watched.has(key)) watched.delete(key); else watched.add(key);
+  saveWatched(); render();
+};
 
 let lastResults = [];
 const doSearch = async () => {

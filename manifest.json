@@ -1,0 +1,16 @@
+{
+  "name": "오늘 올라옴?",
+  "short_name": "오늘올라옴",
+  "start_url": ".",
+  "scope": ".",
+  "display": "standalone",
+  "background_color": "#0D1321",
+  "theme_color": "#0D1321",
+  "icons": [
+    {
+      "src": "icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
