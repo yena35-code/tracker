@@ -41,6 +41,18 @@
   .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--amber); animation: pulseDot 1.6s ease-in-out infinite; }
   @keyframes pulseDot { 0%,100%{opacity:1} 50%{opacity:.25} }
   @media (prefers-reduced-motion: reduce) { .dot { animation: none; } }
+  .dayhead { display: flex; align-items: baseline; gap: 8px; margin: 20px 0 8px; padding-bottom: 6px; border-bottom: 1px solid var(--line); }
+  .dayhead .dayname { font-family: 'Do Hyeon', sans-serif; font-size: 1.3rem; }
+  .dayhead.today .dayname { color: var(--amber); }
+  .dayhead .daydate { font-size: 12px; color: var(--muted); font-weight: 700; }
+  .daytag { font-size: 10px; font-weight: 700; background: var(--amber); color: var(--bg); border-radius: 4px; padding: 2px 6px; }
+  .dayempty { color: var(--dim); font-size: 12px; padding: 2px 0 2px 2px; }
+  .show { display: flex; align-items: center; gap: 8px; background: var(--card); border: 1px solid var(--line); border-radius: 12px; padding: 12px; margin-bottom: 8px; }
+  .show.today { background: #1E1A0E; border-color: var(--amber); }
+  .show.dimmed { opacity: .55; }
+  .show-info { flex: 1; }
+  .show .name { font-weight: 700; font-size: 15px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+  .epn { font-size: 12px; color: var(--muted); font-weight: 400; }
   .overlay { position: fixed; inset: 0; background: rgba(13,19,33,0.97); z-index: 50; display: none; flex-direction: column; padding: 20px; }
   .overlay.open { display: flex; }
   .searchbar { display: flex; gap: 8px; max-width: 720px; margin: 0 auto; width: 100%; }
@@ -147,47 +159,93 @@ const fetchShow = async (id) => {
   };
 };
 
+const DAYN = ["일","월","화","수","목","금","토"];
+
+// 다음 회차 정보가 없으면 마지막 회차 +7일로 예상
+const predictEp = (s) => {
+  if (s.nextEp || !s.lastEp || !s.lastEp.air_date) return null;
+  const lastDd = ddayOf(s.lastEp.air_date);
+  if (lastDd < -21) return null; // 3주 넘게 소식 없으면 예측 안 함
+  let dd = lastDd + 7;
+  let epNum = s.lastEp.episode_number + 1;
+  while (dd < 0) { dd += 7; epNum += 1; }
+  const date = new Date(kstToday() + dd * 86400000);
+  return { season_number: s.lastEp.season_number, episode_number: epNum, air_date: date.toISOString().slice(0, 10), predicted: true };
+};
+
+const showCard = (s, isToday) => {
+  const ep = s._ep || s.nextEp;
+  const chips = s.providers.length > 0
+    ? s.providers.map((p) => `<span class="chip" style="color:${p.color};border:1px solid ${p.color}">${p.label} · ${p.timeHint}</span>`).join("")
+    : `<span class="none">5개 플랫폼 미제공 (정보 없음)</span>`;
+  return `
+    <div class="show ${isToday ? "today" : ""}">
+      <div class="show-info">
+        <div class="name">${isToday ? '<span class="dot"></span>' : ""}${esc(s.name)}${ep ? `<span class="epn">${ep.season_number}시즌 ${ep.episode_number}화${ep.predicted ? " (예상)" : ""}</span>` : ""}</div>
+        <div class="chips">${chips}</div>
+      </div>
+      <button class="del" onclick="removeShow(${s.id})">✕</button>
+    </div>`;
+};
+
 const render = () => {
-  const sorted = [...shows].sort((a, b) => {
-    const da = a.nextEp ? ddayOf(a.nextEp.air_date) : 9999;
-    const db = b.nextEp ? ddayOf(b.nextEp.air_date) : 9999;
-    return da - db;
+  const byDay = Array.from({ length: 7 }, () => []);
+  const later = [], rest = [];
+  shows.forEach((s) => {
+    const ended = s.status === "Ended" || s.status === "Canceled";
+    const ep = ended ? null : (s.nextEp || predictEp(s));
+    s._ep = ep;
+    const dd = ep ? ddayOf(ep.air_date) : null;
+    if (!ended && dd !== null && dd >= 0 && dd <= 6) byDay[dd].push(s);
+    else if (!ended && dd !== null && dd > 6) later.push(s);
+    else rest.push({ ...s, ended });
   });
-  const todayCount = sorted.filter((s) => s.nextEp && ddayOf(s.nextEp.air_date) === 0).length;
+  later.sort((a, b) => ddayOf(a._ep.air_date) - ddayOf(b._ep.air_date));
+
+  const todayCount = byDay[0].length;
   $("subline").textContent = todayCount > 0 ? `오늘 올라오는 프로그램 ${todayCount}개` : "오늘 예정된 업로드 없음";
 
-  if (sorted.length === 0) {
+  if (shows.length === 0) {
     $("list").innerHTML = `<div class="empty">아직 등록된 프로그램이 없어.<br>오른쪽 위 <b>+ 추가</b>로 보고 있는 프로그램을 등록해줘.</div>`;
     return;
   }
 
-  $("list").innerHTML = sorted.map((s) => {
-    const ep = s.nextEp;
-    const dd = ep ? ddayOf(ep.air_date) : null;
-    const isToday = dd === 0;
-    const ended = s.status === "Ended" || s.status === "Canceled";
-    const big = ended ? "완결" : ep ? (isToday ? "오늘" : dd > 0 ? `D-${dd}` : "방영중") : "미정";
-    const bigColor = isToday ? "" : ended ? "color:var(--dim)" : "";
-    const epTxt = ep ? `${ep.season_number}시즌 ${ep.episode_number}화`
-      : ended ? "시리즈 종료"
-      : "다음 회차 정보 없음" + (s.lastEp ? ` · 마지막: ${s.lastEp.season_number}시즌 ${s.lastEp.episode_number}화 (${fmtDate(s.lastEp.air_date)})` : "");
-    const chips = s.providers.length > 0
-      ? s.providers.map((p) => `<span class="chip" style="color:${p.color};border:1px solid ${p.color}">${p.label} · ${p.timeHint}</span>`).join("")
-      : `<span class="none">5개 플랫폼 미제공 (정보 없음)</span>`;
-    return `
-      <div class="row ${isToday ? "today" : ""}">
-        <div class="dday">
-          <div class="big" style="${bigColor}">${big}</div>
-          ${ep ? `<div class="date">${fmtDate(ep.air_date)}</div>` : ""}
-        </div>
-        <div class="info">
-          <div class="name">${isToday ? '<span class="dot"></span>' : ""}${esc(s.name)}</div>
-          <div class="ep">${epTxt}</div>
-          <div class="chips">${chips}</div>
+  let html = "";
+  for (let d = 0; d < 7; d++) {
+    const date = new Date(kstToday() + d * 86400000);
+    const isToday = d === 0;
+    html += `
+      <div class="dayhead ${isToday ? "today" : ""}">
+        <span class="dayname">${DAYN[date.getUTCDay()]}</span>
+        <span class="daydate">${date.getUTCMonth() + 1}/${date.getUTCDate()}</span>
+        ${isToday ? '<span class="daytag">오늘</span>' : ""}
+      </div>`;
+    html += byDay[d].length
+      ? byDay[d].map((s) => showCard(s, isToday)).join("")
+      : `<div class="dayempty">—</div>`;
+  }
+  if (later.length) {
+    html += `<div class="dayhead"><span class="dayname">다음 주 이후</span></div>`;
+    html += later.map((s) => `
+      <div class="show">
+        <div class="show-info">
+          <div class="name">${esc(s.name)}<span class="epn">${s._ep.season_number}시즌 ${s._ep.episode_number}화${s._ep.predicted ? " (예상)" : ""} · ${fmtDate(s._ep.air_date)} (D-${ddayOf(s._ep.air_date)})</span></div>
+          <div class="chips">${s.providers.map((p) => `<span class="chip" style="color:${p.color};border:1px solid ${p.color}">${p.label}</span>`).join("") || '<span class="none">OTT 정보 없음</span>'}</div>
         </div>
         <button class="del" onclick="removeShow(${s.id})">✕</button>
-      </div>`;
-  }).join("");
+      </div>`).join("");
+  }
+  if (rest.length) {
+    html += `<div class="dayhead"><span class="dayname">미정 · 완결</span></div>`;
+    html += rest.map((s) => `
+      <div class="show dimmed">
+        <div class="show-info">
+          <div class="name">${esc(s.name)}<span class="epn">${s.ended ? "완결" : "다음 회차 미정"}</span></div>
+        </div>
+        <button class="del" onclick="removeShow(${s.id})">✕</button>
+      </div>`).join("");
+  }
+  $("list").innerHTML = html;
 };
 
 const pickRowHtml = (r) => {
