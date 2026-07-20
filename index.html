@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>오늘 올라옴?</title>
+<link href="https://fonts.googleapis.com/css2?family=Do+Hyeon&family=IBM+Plex+Sans+KR:wght@400;500;700&display=swap" rel="stylesheet" />
+<style>
+  :root {
+    --bg: #0D1321; --card: #131A2C; --card2: #0F1526; --line: #222B45;
+    --text: #EFEDE6; --muted: #8B93A7; --dim: #5A6278; --amber: #FFB020;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { background: var(--bg); color: var(--text); font-family: 'IBM Plex Sans KR', sans-serif; min-height: 100vh; }
+  .display { font-family: 'Do Hyeon', sans-serif; }
+  header { padding: 24px 20px 16px; border-bottom: 1px solid var(--line); display: flex; justify-content: space-between; align-items: flex-end; }
+  h1 { font-family: 'Do Hyeon', sans-serif; font-size: 2rem; line-height: 1; font-weight: 400; }
+  h1 .amber { color: var(--amber); }
+  .sub { margin-top: 6px; font-size: 12px; color: var(--muted); }
+  .btns { display: flex; gap: 8px; }
+  button { font-family: inherit; cursor: pointer; border: none; border-radius: 8px; font-weight: 700; }
+  .btn-ghost { background: #161D2F; border: 1px solid #2A3350; color: var(--muted); padding: 8px 12px; font-size: 12px; }
+  .btn-amber { background: var(--amber); color: var(--bg); padding: 8px 12px; font-size: 12px; }
+  main { padding: 16px 20px; max-width: 720px; margin: 0 auto; }
+  .empty { text-align: center; padding: 64px 0; font-size: 14px; color: var(--muted); line-height: 1.8; }
+  .empty b { color: var(--amber); }
+  .row { display: flex; align-items: stretch; gap: 16px; border-radius: 12px; margin-bottom: 12px; overflow: hidden; background: var(--card); border: 1px solid var(--line); }
+  .row.today { background: #1E1A0E; border-color: var(--amber); }
+  .dday { min-width: 84px; display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 16px; background: var(--card2); }
+  .row.today .dday { background: var(--amber); }
+  .dday .big { font-family: 'Do Hyeon', sans-serif; font-size: 1.6rem; }
+  .row.today .dday .big, .row.today .dday .date { color: var(--bg); }
+  .dday .date { font-size: 11px; margin-top: 4px; font-weight: 700; color: var(--muted); }
+  .info { flex: 1; padding: 12px 8px 12px 0; display: flex; flex-direction: column; justify-content: center; }
+  .name { font-weight: 700; font-size: 16px; display: flex; align-items: center; gap: 8px; }
+  .ep { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 8px; }
+  .chip { font-size: 11px; font-weight: 700; padding: 4px 8px; border-radius: 4px; background: var(--bg); }
+  .none { font-size: 11px; color: var(--dim); }
+  .del { background: none; color: var(--dim); padding: 0 12px; font-size: 12px; }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--amber); animation: pulseDot 1.6s ease-in-out infinite; }
+  @keyframes pulseDot { 0%,100%{opacity:1} 50%{opacity:.25} }
+  @media (prefers-reduced-motion: reduce) { .dot { animation: none; } }
+  .overlay { position: fixed; inset: 0; background: rgba(13,19,33,0.97); z-index: 50; display: none; flex-direction: column; padding: 20px; }
+  .overlay.open { display: flex; }
+  .searchbar { display: flex; gap: 8px; max-width: 720px; margin: 0 auto; width: 100%; }
+  input { flex: 1; border-radius: 8px; padding: 12px 16px; font-size: 14px; font-family: inherit; background: #161D2F; border: 1px solid #2A3350; color: var(--text); outline: none; }
+  .results { margin-top: 16px; overflow-y: auto; max-width: 720px; margin-left: auto; margin-right: auto; width: 100%; }
+  .pick { width: 100%; display: flex; align-items: center; gap: 12px; border-radius: 12px; padding: 12px; margin-bottom: 8px; text-align: left; background: var(--card); border: 1px solid var(--line); color: var(--text); font-weight: 400; }
+  .pick:disabled { opacity: 0.45; cursor: default; }
+  .pick img, .pick .noimg { width: 44px; height: 66px; border-radius: 4px; object-fit: cover; background: var(--card2); flex-shrink: 0; }
+  .pick .meta { flex: 1; }
+  .pick .t { font-weight: 700; font-size: 14px; }
+  .pick .y { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .pick .added { font-size: 11px; font-weight: 700; color: var(--amber); }
+  .label { font-size: 12px; font-weight: 700; color: var(--muted); margin: 8px 0; }
+  .err { max-width: 720px; margin: 12px auto 0; padding: 8px 16px; border-radius: 8px; background: #2B1620; color: #FF6B81; font-size: 12px; display: none; }
+  .err.show { display: block; }
+  .loading { text-align: center; font-size: 12px; color: var(--muted); padding: 24px 0; }
+</style>
+</head>
+<body>
+
+<header>
+  <div>
+    <h1>오늘 <span class="amber">올라옴?</span></h1>
+    <div class="sub" id="subline">오늘 예정된 업로드 없음</div>
+  </div>
+  <div class="btns">
+    <button class="btn-ghost" id="refreshBtn">새로고침</button>
+    <button class="btn-amber" id="addBtn">+ 추가</button>
+  </div>
+</header>
+
+<div class="err" id="errBox"></div>
+<main id="list"></main>
+
+<div class="overlay" id="overlay">
+  <div class="searchbar">
+    <input id="q" placeholder="프로그램 이름 검색 (예: 환승연애)" />
+    <button class="btn-amber" id="searchBtn">검색</button>
+    <button class="btn-ghost" id="closeBtn">닫기</button>
+  </div>
+  <div class="results" id="results"></div>
+</div>
+
+<script>
+const API_KEY = "61e06244f92a8f972370616edf8345e5";
+const IMG = "https://image.tmdb.org/t/p/w185";
+
+const PLATFORMS = [
+  { key: "tving", label: "티빙", color: "#FF153C", match: ["tving"], timeHint: "본방 종료 직후" },
+  { key: "wavve", label: "웨이브", color: "#2E6BFF", match: ["wavve"], timeHint: "본방 종료 직후" },
+  { key: "netflix", label: "넷플릭스", color: "#E50914", match: ["netflix"], timeHint: "오후 4~5시 (글로벌 동시)" },
+  { key: "disney", label: "디즈니+", color: "#4FC3F7", match: ["disney"], timeHint: "오후 4시 전후" },
+  { key: "coupang", label: "쿠팡플레이", color: "#F5A623", match: ["coupang"], timeHint: "공개일 오전" },
+];
+
+let shows = [];
+let browseList = [];
+try { shows = JSON.parse(localStorage.getItem("ott-shows") || "[]"); } catch (e) { shows = []; }
+const save = () => { try { localStorage.setItem("ott-shows", JSON.stringify(shows)); } catch (e) {} };
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+
+const tmdb = async (path, params = "") => {
+  const res = await fetch(`https://api.themoviedb.org/3${path}?api_key=${API_KEY}&language=ko-KR${params}`);
+  if (!res.ok) throw new Error("TMDB " + res.status);
+  return res.json();
+};
+
+const showErr = (msg) => { const b = $("errBox"); b.textContent = msg; b.classList.add("show"); setTimeout(() => b.classList.remove("show"), 4000); };
+
+const kstToday = () => { const n = new Date(Date.now() + 9*3600*1000); return Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate()); };
+const ddayOf = (ds) => { if (!ds) return null; const [y,m,d] = ds.split("-").map(Number); return Math.round((Date.UTC(y,m-1,d) - kstToday()) / 86400000); };
+const fmtDate = (ds) => { if (!ds) return "미정"; const [y,m,d] = ds.split("-").map(Number); const w = ["일","월","화","수","목","금","토"][new Date(Date.UTC(y,m-1,d)).getUTCDay()]; return `${m}/${d} (${w})`; };
+
+const matchPlatforms = (list) => {
+  if (!list) return [];
+  const names = list.map((p) => (p.provider_name || "").toLowerCase());
+  return PLATFORMS.filter((pl) => names.some((n) => pl.match.some((m) => n.includes(m))));
+};
+
+const fetchShow = async (id) => {
+  const d = await tmdb(`/tv/${id}`, "&append_to_response=watch/providers");
+  const kr = d["watch/providers"]?.results?.KR;
+  return {
+    id: d.id, name: d.name, status: d.status,
+    nextEp: d.next_episode_to_air || null,
+    lastEp: d.last_episode_to_air || null,
+    providers: matchPlatforms([...(kr?.flatrate || []), ...(kr?.ads || [])]),
+  };
+};
+
+const render = () => {
+  const sorted = [...shows].sort((a, b) => {
+    const da = a.nextEp ? ddayOf(a.nextEp.air_date) : 9999;
+    const db = b.nextEp ? ddayOf(b.nextEp.air_date) : 9999;
+    return da - db;
+  });
+  const todayCount = sorted.filter((s) => s.nextEp && ddayOf(s.nextEp.air_date) === 0).length;
+  $("subline").textContent = todayCount > 0 ? `오늘 올라오는 프로그램 ${todayCount}개` : "오늘 예정된 업로드 없음";
+
+  if (sorted.length === 0) {
+    $("list").innerHTML = `<div class="empty">아직 등록된 프로그램이 없어.<br>오른쪽 위 <b>+ 추가</b>로 보고 있는 프로그램을 등록해줘.</div>`;
+    return;
+  }
+
+  $("list").innerHTML = sorted.map((s) => {
+    const ep = s.nextEp;
+    const dd = ep ? ddayOf(ep.air_date) : null;
+    const isToday = dd === 0;
+    const ended = s.status === "Ended" || s.status === "Canceled";
+    const big = ended ? "완결" : ep ? (isToday ? "오늘" : dd > 0 ? `D-${dd}` : "방영중") : "미정";
+    const bigColor = isToday ? "" : ended ? "color:var(--dim)" : "";
+    const epTxt = ep ? `${ep.season_number}시즌 ${ep.episode_number}화`
+      : ended ? "시리즈 종료"
+      : "다음 회차 정보 없음" + (s.lastEp ? ` · 마지막: ${s.lastEp.season_number}시즌 ${s.lastEp.episode_number}화 (${fmtDate(s.lastEp.air_date)})` : "");
+    const chips = s.providers.length > 0
+      ? s.providers.map((p) => `<span class="chip" style="color:${p.color};border:1px solid ${p.color}">${p.label} · ${p.timeHint}</span>`).join("")
+      : `<span class="none">5개 플랫폼 미제공 (정보 없음)</span>`;
+    return `
+      <div class="row ${isToday ? "today" : ""}">
+        <div class="dday">
+          <div class="big" style="${bigColor}">${big}</div>
+          ${ep ? `<div class="date">${fmtDate(ep.air_date)}</div>` : ""}
+        </div>
+        <div class="info">
+          <div class="name">${isToday ? '<span class="dot"></span>' : ""}${esc(s.name)}</div>
+          <div class="ep">${epTxt}</div>
+          <div class="chips">${chips}</div>
+        </div>
+        <button class="del" onclick="removeShow(${s.id})">✕</button>
+      </div>`;
+  }).join("");
+};
+
+const pickRowHtml = (r) => {
+  const added = shows.some((s) => s.id === r.id);
+  const img = r.poster_path ? `<img src="${IMG + r.poster_path}" alt="">` : `<div class="noimg"></div>`;
+  return `
+    <button class="pick" ${added ? "disabled" : ""} onclick="addShow(${r.id})">
+      ${img}
+      <div class="meta">
+        <div class="t">${esc(r.name)}</div>
+        <div class="y">${r.first_air_date ? r.first_air_date.slice(0,4) : "?"} · ⭐ ${r.vote_average ? r.vote_average.toFixed(1) : "-"}</div>
+      </div>
+      ${added ? '<span class="added">✓ 추가됨</span>' : ""}
+    </button>`;
+};
+
+const renderResults = (list, label) => {
+  $("results").innerHTML = (label ? `<div class="label">${label}</div>` : "") + list.map(pickRowHtml).join("");
+};
+
+window.addShow = async (id) => {
+  if (shows.some((s) => s.id === id)) return;
+  try {
+    const s = await fetchShow(id);
+    shows.push(s); save(); render();
+    // 추가 화면 리스트의 "추가됨" 상태 갱신
+    const q = $("q").value.trim();
+    if (q && lastResults.length) renderResults(lastResults);
+    else renderResults(browseList, "요즘 인기 프로그램 — 골라서 바로 추가");
+  } catch (e) { showErr("프로그램 정보를 불러오지 못했어."); }
+};
+
+window.removeShow = (id) => { shows = shows.filter((s) => s.id !== id); save(); render(); };
+
+let lastResults = [];
+const doSearch = async () => {
+  const q = $("q").value.trim();
+  if (!q) return;
+  $("results").innerHTML = `<div class="loading">검색 중...</div>`;
+  try {
+    const data = await tmdb("/search/tv", "&query=" + encodeURIComponent(q));
+    lastResults = (data.results || []).slice(0, 8);
+    renderResults(lastResults);
+    if (lastResults.length === 0) $("results").innerHTML = `<div class="loading">검색 결과 없음</div>`;
+  } catch (e) { showErr("검색 실패."); }
+};
+
+const openAdd = async () => {
+  $("overlay").classList.add("open");
+  $("q").focus();
+  if (browseList.length === 0) {
+    $("results").innerHTML = `<div class="loading">불러오는 중...</div>`;
+    try {
+      const data = await tmdb("/discover/tv", "&with_origin_country=KR&sort_by=popularity.desc");
+      browseList = (data.results || []).slice(0, 20);
+    } catch (e) { showErr("인기 리스트를 불러오지 못했어."); }
+  }
+  renderResults(browseList, "요즘 인기 프로그램 — 골라서 바로 추가");
+};
+
+const refreshAll = async () => {
+  if (shows.length === 0) return;
+  $("refreshBtn").textContent = "...";
+  try {
+    shows = await Promise.all(shows.map((s) => fetchShow(s.id)));
+    save(); render();
+  } catch (e) { showErr("새로고침 중 일부 실패."); }
+  $("refreshBtn").textContent = "새로고침";
+};
+
+$("addBtn").onclick = openAdd;
+$("closeBtn").onclick = () => { $("overlay").classList.remove("open"); $("q").value = ""; lastResults = []; };
+$("searchBtn").onclick = doSearch;
+$("q").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
+$("refreshBtn").onclick = refreshAll;
+
+render();
+if (shows.length > 0) refreshAll(); // 접속할 때마다 최신 회차 정보로 갱신
+</script>
+</body>
+</html>
