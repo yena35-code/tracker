@@ -52,6 +52,8 @@
   .pick .meta { flex: 1; }
   .pick .t { font-weight: 700; font-size: 14px; }
   .pick .y { font-size: 12px; color: var(--muted); margin-top: 4px; }
+  .pchips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+  .pchip { font-size: 10px; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: var(--bg); }
   .pick .added { font-size: 11px; font-weight: 700; color: var(--amber); }
   .label { font-size: 12px; font-weight: 700; color: var(--muted); margin: 8px 0; }
   .err { max-width: 720px; margin: 12px auto 0; padding: 8px 16px; border-radius: 8px; background: #2B1620; color: #FF6B81; font-size: 12px; display: none; }
@@ -122,6 +124,18 @@ const matchPlatforms = (list) => {
   return PLATFORMS.filter((pl) => names.some((n) => pl.match.some((m) => n.includes(m))));
 };
 
+const ymd = (offsetDays) => new Date(kstToday() + offsetDays * 86400000).toISOString().slice(0, 10);
+
+// 리스트 항목마다 시청 가능한 OTT 조회해서 붙이기
+const attachProviders = (list) => Promise.all(list.map(async (r) => {
+  try {
+    const d = await tmdb(`/tv/${r.id}/watch/providers`);
+    const kr = d.results?.KR;
+    r.provs = matchPlatforms([...(kr?.flatrate || []), ...(kr?.ads || [])]);
+  } catch (e) { r.provs = []; }
+  return r;
+}));
+
 const fetchShow = async (id) => {
   const d = await tmdb(`/tv/${id}`, "&append_to_response=watch/providers");
   const kr = d["watch/providers"]?.results?.KR;
@@ -179,12 +193,16 @@ const render = () => {
 const pickRowHtml = (r) => {
   const added = shows.some((s) => s.id === r.id);
   const img = r.poster_path ? `<img src="${IMG + r.poster_path}" alt="">` : `<div class="noimg"></div>`;
+  const provChips = (r.provs && r.provs.length)
+    ? `<div class="pchips">` + r.provs.map((p) => `<span class="pchip" style="color:${p.color};border:1px solid ${p.color}">${p.label}</span>`).join("") + `</div>`
+    : `<div class="pchips"><span class="none">OTT 정보 없음</span></div>`;
   return `
     <button class="pick" ${added ? "disabled" : ""} onclick="addShow(${r.id})">
       ${img}
       <div class="meta">
         <div class="t">${esc(r.name)}</div>
         <div class="y">${r.first_air_date ? r.first_air_date.slice(0,4) : "?"} · ⭐ ${r.vote_average ? r.vote_average.toFixed(1) : "-"}</div>
+        ${provChips}
       </div>
       ${added ? '<span class="added">✓ 추가됨</span>' : ""}
     </button>`;
@@ -202,7 +220,7 @@ window.addShow = async (id) => {
     // 추가 화면 리스트의 "추가됨" 상태 갱신
     const q = $("q").value.trim();
     if (q && lastResults.length) renderResults(lastResults);
-    else renderResults(browseList, "요즘 인기 프로그램 — 골라서 바로 추가");
+    else renderResults(browseList, "지금 방영중 — 골라서 바로 추가");
   } catch (e) { showErr("프로그램 정보를 불러오지 못했어."); }
 };
 
@@ -215,7 +233,7 @@ const doSearch = async () => {
   $("results").innerHTML = `<div class="loading">검색 중...</div>`;
   try {
     const data = await tmdb("/search/tv", "&query=" + encodeURIComponent(q));
-    lastResults = (data.results || []).slice(0, 8);
+    lastResults = await attachProviders((data.results || []).slice(0, 8));
     renderResults(lastResults);
     if (lastResults.length === 0) $("results").innerHTML = `<div class="loading">검색 결과 없음</div>`;
   } catch (e) { showErr("검색 실패."); }
@@ -227,11 +245,11 @@ const openAdd = async () => {
   if (browseList.length === 0) {
     $("results").innerHTML = `<div class="loading">불러오는 중...</div>`;
     try {
-      const data = await tmdb("/discover/tv", "&with_origin_country=KR&sort_by=popularity.desc");
-      browseList = (data.results || []).slice(0, 20);
+      const data = await tmdb("/discover/tv", `&with_origin_country=KR&sort_by=popularity.desc&air_date.gte=${ymd(-7)}&air_date.lte=${ymd(7)}`);
+      browseList = await attachProviders((data.results || []).slice(0, 20));
     } catch (e) { showErr("인기 리스트를 불러오지 못했어."); }
   }
-  renderResults(browseList, "요즘 인기 프로그램 — 골라서 바로 추가");
+  renderResults(browseList, "지금 방영중 — 골라서 바로 추가");
 };
 
 const refreshAll = async () => {
