@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+<title>오늘 올라옴?</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/variable/pretendardvariable-dynamic-subset.min.css" />
+<style>
+  :root {
+    --bg: #F2F4F6; --surface: #FFFFFF; --surface2: #F2F4F6; --line: rgba(0,29,58,.06); --line2: rgba(0,29,58,.12);
+    --text: #191F28; --muted: #6B7684; --dim: #B0B8C1;
+    --accent: #3182F6; --accent-ink: #FFFFFF; --accent-soft: rgba(49,130,246,.08);
+    --ok: #3182F6; --danger: #F04452;
+    --r: 16px;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+  html { color-scheme: light; }
+  body { background: var(--bg); color: var(--text); font-family: "Pretendard Variable", Pretendard, -apple-system, system-ui, sans-serif; min-height: 100vh; letter-spacing: -0.01em; }
+  button { font: inherit; color: inherit; cursor: pointer; border: none; background: none; }
+  input { font: inherit; color: inherit; }
+
+  /* ── 헤더 ── */
+  header { position: sticky; top: 0; z-index: 20; background: rgba(242,244,246,.92); backdrop-filter: blur(16px); -webkit-backdrop-filter: blur(16px); padding: calc(env(safe-area-inset-top) + 16px) 16px 12px; border-bottom: 1px solid var(--line); }
+  .top { max-width: 640px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  h1 { font-size: 22px; font-weight: 800; letter-spacing: -0.03em; }
+  h1 em { font-style: normal; color: var(--accent); }
+  .sub { margin-top: 2px; font-size: 13px; color: var(--muted); }
+  .sub b { color: var(--text); font-weight: 600; }
+  .icons { display: flex; gap: 4px; }
+  .ibtn { width: 38px; height: 38px; border-radius: 12px; display: grid; place-items: center; color: var(--muted); position: relative; }
+  .ibtn:hover { background: var(--surface); color: var(--text); }
+  .ibtn svg { width: 20px; height: 20px; }
+  .ibtn.primary { background: var(--accent); color: var(--accent-ink); }
+  .ibtn.on { color: var(--accent); }
+  .ibtn .badge { position: absolute; top: 8px; right: 8px; width: 7px; height: 7px; border-radius: 50%; background: var(--accent); box-shadow: 0 0 0 2px var(--bg); }
+  .ibtn.spin svg { animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* 주간 바 */
+  .week { max-width: 640px; margin: 14px auto 0; display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
+  .wd { display: flex; flex-direction: column; align-items: center; gap: 2px; padding: 8px 0 7px; border-radius: 12px; color: var(--muted); font-size: 11px; font-weight: 600; }
+  .wd .n { font-size: 16px; font-weight: 700; color: var(--text); }
+  .wd .pips { display: flex; gap: 2px; height: 4px; margin-top: 3px; }
+  .wd .pip { width: 4px; height: 4px; border-radius: 50%; background: var(--dim); }
+  .wd .pip.hot { background: var(--accent); }
+  .wd.past .n { color: var(--muted); }
+  .wd.today { background: var(--accent); color: var(--accent-ink); }
+  .wd.today .n { color: var(--accent-ink); }
+  .wd.today .pip { background: var(--accent-ink); opacity: .45; }
+  .wd.today .pip.hot { opacity: 1; }
+  .wd:not(.today):hover { background: var(--surface); }
+
+  /* ── 목록 ── */
+  main { max-width: 640px; margin: 0 auto; padding: 8px 16px calc(env(safe-area-inset-bottom) + 40px); }
+  .day { scroll-margin-top: 150px; }
+  .dh { display: flex; align-items: baseline; gap: 8px; margin: 22px 2px 10px; }
+  .dh .dn { font-size: 15px; font-weight: 700; }
+  .dh .dd { font-size: 13px; color: var(--muted); }
+  .dh .tag { font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); }
+  .day.past .dh .dn { color: var(--muted); }
+  .empty-day { font-size: 13px; color: var(--dim); padding: 0 2px; }
+
+  .card { display: flex; align-items: center; gap: 12px; padding: 10px; padding-right: 12px; margin-bottom: 8px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); transition: opacity .2s, border-color .2s; }
+  .card.today { border-color: rgba(49,130,246,.35); background: linear-gradient(0deg, var(--accent-soft), var(--accent-soft)), var(--surface); }
+  .card.done { opacity: .45; }
+  .card.muted { opacity: .55; }
+  .poster { width: 42px; height: 60px; flex-shrink: 0; border-radius: 8px; background: var(--surface2) center/cover no-repeat; display: grid; place-items: center; font-weight: 800; color: var(--dim); font-size: 16px; }
+  .meta { flex: 1; min-width: 0; }
+  .title { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 6px; }
+  .title span.t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .new { flex-shrink: 0; font-size: 10px; font-weight: 800; padding: 2px 6px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); }
+  .line2 { margin-top: 4px; font-size: 12px; color: var(--muted); display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; }
+  .plat { display: inline-flex; align-items: center; gap: 4px; }
+  .plat::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--c); }
+
+  /* 시간 칸: 글자로 보여주고, 위에 투명한 시간 입력을 겹쳐서 누르면 선택창이 뜸 */
+  .tp { position: relative; flex-shrink: 0; height: 34px; min-width: 76px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--line2); background: var(--surface2); display: grid; place-items: center; font-size: 13px; font-weight: 700; white-space: nowrap; cursor: pointer; }
+  .tp input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; border: none; }
+  .tp:focus-within { border-color: var(--accent); }
+  .tp.unset { color: var(--dim); font-weight: 600; }
+  .chk { flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%; border: 1.5px solid var(--line2); display: grid; place-items: center; color: transparent; }
+  .chk svg { width: 16px; height: 16px; }
+  .chk.on { background: var(--ok); border-color: var(--ok); color: #fff; }
+  .chk:not(.on):hover { border-color: var(--muted); color: var(--dim); }
+  .del { display: none; flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%; background: rgba(255,107,107,.14); color: var(--danger); place-items: center; }
+  .del svg { width: 14px; height: 14px; }
+  /* 시간 칸과 삭제는 편집 모드에서만 */
+  .card .tp { display: none; }
+  body.editing .del, body.editing .card .tp { display: grid; }
+  body.editing .chk { display: none; }
+  .alarm { color: var(--accent); font-weight: 600; }
+  .edit-hint { display: none; margin: 14px 0 -6px; padding: 12px 14px; border-radius: 12px; background: var(--accent-soft); color: var(--accent); font-size: 13px; line-height: 1.5; }
+  body.editing .edit-hint { display: block; }
+
+  .section { margin: 30px 2px 10px; font-size: 13px; font-weight: 700; color: var(--muted); }
+  .empty { text-align: center; padding: 72px 16px; color: var(--muted); font-size: 14px; line-height: 1.8; }
+  .empty .big { font-size: 40px; margin-bottom: 8px; }
+  .empty button { margin-top: 16px; padding: 10px 18px; border-radius: 12px; background: var(--accent); color: var(--accent-ink); font-weight: 700; }
+
+  .toast { position: fixed; left: 50%; bottom: calc(env(safe-area-inset-bottom) + 20px); transform: translate(-50%, 20px); opacity: 0; pointer-events: none; transition: .25s; z-index: 80; max-width: calc(100% - 32px); padding: 12px 16px; border-radius: 14px; background: #191F28; color: #fff; border: 1px solid var(--line2); font-size: 13px; box-shadow: 0 10px 30px rgba(0,0,0,.15); }
+  .toast.show { opacity: 1; transform: translate(-50%, 0); }
+
+  /* ── 시트 (검색 / 설정) ── */
+  .sheet { position: fixed; inset: 0; z-index: 50; display: none; }
+  .sheet.open { display: block; }
+  .sheet .scrim { position: absolute; inset: 0; background: rgba(0,0,0,.35); animation: fade .2s; }
+  .sheet .panel { position: absolute; left: 0; right: 0; bottom: 0; max-width: 640px; margin: 0 auto; max-height: 88vh; display: flex; flex-direction: column; background: var(--surface); border: none; border-radius: 22px 22px 0 0; padding: 10px 16px calc(env(safe-area-inset-bottom) + 16px); animation: up .25s cubic-bezier(.2,.8,.2,1); }
+  @keyframes fade { from { opacity: 0; } }
+  @keyframes up { from { transform: translateY(40px); opacity: 0; } }
+  .grab { width: 36px; height: 4px; border-radius: 2px; background: var(--line2); margin: 0 auto 12px; }
+  .ph { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
+  .ph h2 { font-size: 18px; font-weight: 800; }
+  .search { display: flex; align-items: center; gap: 8px; height: 46px; padding: 0 14px; border-radius: 14px; background: var(--surface); border: 1px solid var(--line2); }
+  .search svg { width: 18px; height: 18px; color: var(--muted); flex-shrink: 0; }
+  .search input { flex: 1; background: none; border: none; outline: none; font-size: 15px; }
+  .results { margin-top: 14px; overflow-y: auto; }
+  .label { font-size: 12px; font-weight: 700; color: var(--muted); margin: 4px 2px 10px; }
+  .pick { width: 100%; display: flex; align-items: center; gap: 12px; padding: 8px; border-radius: 14px; text-align: left; }
+  .pick:hover { background: var(--surface); }
+  .pick:disabled { opacity: .45; cursor: default; }
+  .pick .poster { width: 40px; height: 58px; }
+  .pick .y { font-size: 12px; color: var(--muted); margin-top: 3px; }
+  .pick .add { flex-shrink: 0; width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--surface2); color: var(--accent); }
+  .pick .add svg { width: 16px; height: 16px; }
+  .pick:disabled .add { background: none; color: var(--ok); }
+  .loading { text-align: center; font-size: 13px; color: var(--muted); padding: 32px 0; }
+
+  .group { background: var(--surface); border: 1px solid var(--line); border-radius: var(--r); margin-bottom: 12px; overflow: hidden; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 14px 16px; min-height: 56px; }
+  .row + .row { border-top: 1px solid var(--line); }
+  .row .rt { font-size: 15px; font-weight: 600; }
+  .row .rd { font-size: 12px; color: var(--muted); margin-top: 2px; line-height: 1.5; }
+  .row.disabled { opacity: .4; pointer-events: none; }
+  .sw { position: relative; width: 46px; height: 28px; flex-shrink: 0; }
+  .sw input { position: absolute; opacity: 0; inset: 0; cursor: pointer; z-index: 1; }
+  .sw span { position: absolute; inset: 0; border-radius: 999px; background: var(--surface2); border: 1px solid var(--line2); transition: .2s; }
+  .sw span::after { content: ""; position: absolute; top: 3px; left: 3px; width: 20px; height: 20px; border-radius: 50%; background: var(--muted); transition: .2s; }
+  .sw input:checked + span { background: var(--accent); border-color: var(--accent); }
+  .sw input:checked + span::after { transform: translateX(18px); background: var(--accent-ink); }
+  select, .row input[type=time] { height: 36px; padding: 0 10px; border-radius: 10px; border: 1px solid var(--line2); background: var(--surface2); font: inherit; font-size: 14px; font-weight: 600; color: var(--text); outline: none; }
+  .pill-btn { padding: 9px 14px; border-radius: 10px; font-size: 13px; font-weight: 700; background: var(--accent); color: var(--accent-ink); flex-shrink: 0; }
+  .pill-btn.ghost { background: var(--surface2); color: var(--text); }
+  .status { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; font-weight: 700; color: var(--ok); }
+  .status::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .hint { font-size: 12px; color: var(--dim); line-height: 1.6; padding: 0 4px 8px; }
+  .settings-body { overflow-y: auto; }
+
+  .credit { max-width: 640px; margin: 0 auto; padding: 0 16px calc(env(safe-area-inset-bottom) + 24px); font-size: 11px; color: var(--dim); text-align: center; line-height: 1.6; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation: none !important; transition: none !important; } }
+</style>
+</head>
+<body>
+
+<header>
+  <div class="top">
+    <div>
+      <h1>오늘 <em>올라옴?</em></h1>
+      <div class="sub" id="subline">&nbsp;</div>
+    </div>
+    <div class="icons">
+      <button class="ibtn" id="editBtn" title="편집" aria-label="편집">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+      </button>
+      <button class="ibtn" id="refreshBtn" title="새로고침" aria-label="새로고침">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 4v5h-5"/></svg>
+      </button>
+      <button class="ibtn primary" id="addBtn" title="프로그램 추가" aria-label="프로그램 추가">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </div>
+  </div>
+  <nav class="week" id="week"></nav>
+</header>
+
+<main id="list"></main>
+<footer class="credit">방송 정보 제공: TMDB · This product uses the TMDB API but is not endorsed or certified by TMDB.</footer>
+<div class="toast" id="toast"></div>
+
+<!-- 검색 시트 -->
+<div class="sheet" id="addSheet">
+  <div class="scrim" data-close></div>
+  <div class="panel">
+    <div class="grab"></div>
+    <div class="ph"><h2>프로그램 추가</h2><button class="ibtn" data-close aria-label="닫기"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>
+    <div class="search">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+      <input id="q" placeholder="프로그램 이름 (예: 환승연애)" enterkeyhint="search" autocomplete="off" />
+    </div>
+    <div class="results" id="results"></div>
+  </div>
+</div>
+
+<script>
+// Cloudflare Worker 주소 (server/worker.js). TMDB 키는 서버에만 있음
+const SERVER = "https://ott-server.yena35.workers.dev";
+const IMG = "https://image.tmdb.org/t/p/w185";
+
+const PLATFORMS = [
+  { key: "tving", label: "티빙", color: "#FF153C", match: ["tving"] },
+  { key: "wavve", label: "웨이브", color: "#2E6BFF", match: ["wavve"] },
+  { key: "netflix", label: "넷플릭스", color: "#E50914", match: ["netflix"] },
+  { key: "disney", label: "디즈니+", color: "#4FC3F7", match: ["disney"] },
+  { key: "coupang", label: "쿠팡플레이", color: "#F5A623", match: ["coupang"] },
+];
+
+// ── 저장 ──
+const load = (k, d) => { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch (e) { return d; } };
+const store = (k, v) => { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) {} };
+let shows = load("ott-shows", []);
+let watched = new Set(load("ott-watched", []));
+let times = load("ott-times", {}); // 프로그램별 업로드 시간 (TMDB엔 시간 정보가 없어서 직접 입력)
+let settings = { epOn: true, offset: 0, sumOn: true, sumTime: "09:00", ...load("ott-settings", {}) };
+const save = () => store("ott-shows", shows);
+const saveWatched = () => store("ott-watched", [...watched]);
+const saveTimes = () => store("ott-times", times);
+const saveSettings = () => store("ott-settings", settings);
+let browseList = [], lastResults = [];
+
+const $ = (id) => document.getElementById(id);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;" }[c]));
+const ICON_CHECK = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5 10 17 19 7"/></svg>';
+const ICON_X = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+const ICON_PLUS = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>';
+
+let toastTimer;
+const toast = (msg) => { const t = $("toast"); t.textContent = msg; t.classList.add("show"); clearTimeout(toastTimer); toastTimer = setTimeout(() => t.classList.remove("show"), 3200); };
+
+const tmdb = async (path, params = "") => {
+  const res = await fetch(`${SERVER}/tmdb${path}?language=ko-KR${params}`);
+  if (!res.ok) throw new Error("TMDB " + res.status);
+  return res.json();
+};
+
+// ── 날짜 (모두 한국시간 기준) ──
+const DAY = 86400000;
+const kstToday = () => { const n = new Date(Date.now() + 9*3600*1000); return Date.UTC(n.getUTCFullYear(), n.getUTCMonth(), n.getUTCDate()); };
+const ddayOf = (ds) => { if (!ds) return null; const [y,m,d] = ds.split("-").map(Number); return Math.round((Date.UTC(y,m-1,d) - kstToday()) / DAY); };
+const DAYN = ["일","월","화","수","목","금","토"];
+const fmtDate = (ds) => { const [y,m,d] = ds.split("-").map(Number); return `${m}/${d} (${DAYN[new Date(Date.UTC(y,m-1,d)).getUTCDay()]})`; };
+const ymd = (off) => new Date(kstToday() + off * DAY).toISOString().slice(0, 10);
+const kstEpoch = (ds, hm) => { const [y,m,d] = ds.split("-").map(Number); const [h,mi] = hm.split(":").map(Number); return Date.UTC(y, m-1, d, h, mi) - 9*3600*1000; };
+// 이번 주 월요일이 오늘로부터 며칠 전인지 (월요일이면 0, 일요일이면 -6)
+const monOff = () => -((new Date(kstToday()).getUTCDay() + 6) % 7);
+
+const matchPlatforms = (list) => {
+  if (!list) return [];
+  const names = list.map((p) => (p.provider_name || "").toLowerCase());
+  return PLATFORMS.filter((pl) => names.some((n) => pl.match.some((m) => n.includes(m))));
+};
+
+// 편집 모드에서 직접 넣은 시간만 사용 (넣은 프로그램만 정시 알림)
+const timeOf = () => null; // 토스 버전은 알림이 없어서 업로드 시간 기능 없음
+
+// ── TMDB ──
+const attachProviders = (list) => Promise.all(list.map(async (r) => {
+  try {
+    const d = await tmdb(`/tv/${r.id}/watch/providers`);
+    const kr = d.results?.KR;
+    r.provs = matchPlatforms([...(kr?.flatrate || []), ...(kr?.ads || [])]);
+  } catch (e) { r.provs = []; }
+  return r;
+}));
+
+const fetchShow = async (id) => {
+  const d = await tmdb(`/tv/${id}`, "&append_to_response=watch/providers");
+  const kr = d["watch/providers"]?.results?.KR;
+  // 시즌 전체 회차를 조회해 이번 주(월요일부터) 회차를 모두 잡음 — 금토 드라마처럼 주 2회도
+  let upcoming = [];
+  const seasonNum = (d.next_episode_to_air || d.last_episode_to_air || {}).season_number;
+  if (seasonNum) {
+    try {
+      const season = await tmdb(`/tv/${id}/season/${seasonNum}`);
+      upcoming = (season.episodes || [])
+        .filter((e) => e.air_date && ddayOf(e.air_date) >= monOff())
+        .map((e) => ({ season_number: e.season_number, episode_number: e.episode_number, air_date: e.air_date }))
+        .slice(0, 8);
+    } catch (e) {}
+  }
+  return {
+    id: d.id, name: d.name, status: d.status, poster: d.poster_path || null,
+    nextEp: d.next_episode_to_air || null,
+    lastEp: d.last_episode_to_air || null,
+    upcoming,
+    providers: matchPlatforms([...(kr?.flatrate || []), ...(kr?.ads || [])]),
+  };
+};
+
+// 다음 회차 정보가 없으면 마지막 회차 +7일로 예상 (3주 넘게 소식 없으면 예측 안 함)
+const predictEp = (s) => {
+  if (!s.lastEp?.air_date) return null;
+  const lastDd = ddayOf(s.lastEp.air_date);
+  if (lastDd < -21) return null;
+  let dd = lastDd + 7, epNum = s.lastEp.episode_number + 1;
+  while (dd < 0) { dd += 7; epNum += 1; }
+  return { season_number: s.lastEp.season_number, episode_number: epNum, air_date: ymd(dd), predicted: true };
+};
+
+// 프로그램의 알려진 회차 전부 (중복 제거, 날짜순). 앞으로 올 회차가 없으면 예상 회차 추가
+const epsOf = (s) => {
+  const ended = s.status === "Ended" || s.status === "Canceled";
+  const map = new Map();
+  [...(s.upcoming || []), s.lastEp, s.nextEp].forEach((e) => {
+    if (e?.air_date) map.set(`${e.season_number}-${e.episode_number}`, { season_number: e.season_number, episode_number: e.episode_number, air_date: e.air_date });
+  });
+  let eps = [...map.values()].sort((a, b) => a.air_date.localeCompare(b.air_date));
+  if (!ended && !eps.some((e) => ddayOf(e.air_date) >= 0)) { const p = predictEp(s); if (p) eps.push(p); }
+  return eps;
+};
+
+const epKey = (s, ep) => `${s.id}-s${ep.season_number}e${ep.episode_number}`;
+const epLabel = (ep) => `${ep.episode_number}화${ep.predicted ? " (예상)" : ""}`;
+// 이미 올라왔는지: 지난 날짜, 또는 오늘인데 업로드 시간이 지남
+const isAired = (s, ep) => {
+  const dd = ddayOf(ep.air_date);
+  if (dd < 0) return true;
+  if (dd > 0) return false;
+  const tm = timeOf(s);
+  return !!tm && Date.now() >= kstEpoch(ep.air_date, tm.t);
+};
+
+// ── 화면 ──
+const timeInput = (s) => {
+  const tm = timeOf(s);
+  const tip = tm ? "알림 시간 (비우면 해제)" : "알림 시간 설정";
+  return `<label class="tp ${tm ? "" : "unset"}" title="${tip}">${tm ? fmtTime(tm.t) : "+ 시간"}<input type="time" value="${tm ? tm.t : ""}" aria-label="${esc(s.name)} ${tip}" onclick="try{this.showPicker()}catch(e){}" onchange="setTime(${s.id}, this.value)"></label>`;
+};
+// "16:00" → "오후 4:00"
+const fmtTime = (hm) => { const [h, m] = hm.split(":").map(Number); return `${h < 12 ? "오전" : "오후"} ${h % 12 || 12}:${String(m).padStart(2, "0")}`; };
+
+const posterHtml = (path, name) => path
+  ? `<div class="poster" style="background-image:url('${IMG + path}')"></div>`
+  : `<div class="poster">${esc((name || "?").slice(0, 1))}</div>`;
+
+const platHtml = (s) => (s.providers || []).map((p) => `<span class="plat" style="--c:${p.color}">${p.label}</span>`).join("");
+
+const card = (s, ep, opt = {}) => {
+  const key = ep ? epKey(s, ep) : "";
+  const done = key && watched.has(key);
+  const aired = ep && isAired(s, ep);
+  const cls = [opt.today && "today", done && "done", opt.muted && "muted"].filter(Boolean).join(" ");
+  const bits = [];
+  if (ep) bits.push(`<span>${epLabel(ep)}</span>`);
+  if (opt.date) bits.push(`<span>${fmtDate(ep.air_date)}</span>`);
+  if (opt.note) bits.push(`<span>${opt.note}</span>`);
+  const tm = timeOf(s);
+  if (tm && ep) bits.push(`<span class="alarm">🔔 ${fmtTime(tm.t)}</span>`);
+  bits.push(platHtml(s));
+  return `
+    <div class="card ${cls}">
+      ${posterHtml(s.poster, s.name)}
+      <div class="meta">
+        <div class="title"><span class="t">${esc(s.name)}</span>${aired && !done ? '<span class="new">올라옴</span>' : ""}</div>
+        <div class="line2">${bits.join("")}</div>
+      </div>
+      ${key ? `<button class="chk ${done ? "on" : ""}" onclick="toggleWatched('${key}')" title="봤어요" aria-label="봤어요">${ICON_CHECK}</button>` : ""}
+      <button class="del" onclick="removeShow(${s.id})" title="삭제" aria-label="${esc(s.name)} 삭제">${ICON_X}</button>
+    </div>`;
+};
+
+const byTime = (a, b) => (timeOf(a.s)?.t || "99").localeCompare(timeOf(b.s)?.t || "99");
+
+const render = () => {
+  const mo = monOff();
+  const week = Array.from({ length: 7 }, () => []);
+  const later = [], rest = [];
+  shows.forEach((s) => {
+    const eps = epsOf(s);
+    const inWeek = eps.filter((e) => { const dd = ddayOf(e.air_date); return dd >= mo && dd <= mo + 6; });
+    inWeek.forEach((e) => week[ddayOf(e.air_date) - mo].push({ s, ep: e }));
+    if (!inWeek.length) {
+      const next = eps.find((e) => ddayOf(e.air_date) > mo + 6);
+      if (next) later.push({ s, ep: next }); else rest.push(s);
+    }
+  });
+  week.forEach((l) => l.sort(byTime));
+  later.sort((a, b) => a.ep.air_date.localeCompare(b.ep.air_date));
+
+  // 헤더 요약
+  const all = week.flat();
+  const todayIdx = -mo;
+  const todayCount = week[todayIdx].length;
+  const unseen = all.filter(({ s, ep }) => isAired(s, ep) && !watched.has(epKey(s, ep))).length;
+  $("subline").innerHTML = shows.length === 0 ? "보고 있는 프로그램을 추가해보세요"
+    : [todayCount ? `오늘 <b>${todayCount}개</b> 올라와요` : "오늘은 올라오는 게 없어요", unseen ? `안 본 회차 <b>${unseen}개</b>` : ""].filter(Boolean).join(" · ");
+
+  // 주간 바
+  $("week").innerHTML = week.map((items, i) => {
+    const date = new Date(kstToday() + (mo + i) * DAY);
+    const pips = items.slice(0, 4).map(({ s, ep }) => `<i class="pip ${isAired(s, ep) && !watched.has(epKey(s, ep)) ? "hot" : ""}"></i>`).join("");
+    return `<button class="wd ${i === todayIdx ? "today" : i < todayIdx ? "past" : ""}" onclick="jumpTo(${i})">
+      ${DAYN[date.getUTCDay()]}<span class="n">${date.getUTCDate()}</span><span class="pips">${pips}</span></button>`;
+  }).join("");
+
+
+  if (shows.length === 0) {
+    $("list").innerHTML = `<div class="empty"><div class="big">📺</div>아직 등록된 프로그램이 없어요.<br>보고 있는 프로그램을 추가하면<br>언제 올라오는지 알려드릴게요.<br><button onclick="openAdd()">프로그램 추가</button></div>`;
+    return;
+  }
+
+  let html = "";
+  week.forEach((items, i) => {
+    const date = new Date(kstToday() + (mo + i) * DAY);
+    const isToday = i === todayIdx;
+    html += `<section class="day ${i < todayIdx ? "past" : ""}" id="day-${i}">
+      <div class="dh"><span class="dn">${DAYN[date.getUTCDay()]}요일</span><span class="dd">${date.getUTCMonth() + 1}월 ${date.getUTCDate()}일</span>${isToday ? '<span class="tag">오늘</span>' : ""}</div>
+      ${items.length ? items.map(({ s, ep }) => card(s, ep, { today: isToday })).join("") : '<div class="empty-day">올라오는 프로그램 없음</div>'}
+    </section>`;
+  });
+  if (later.length) {
+    html += `<div class="section">다음 주 이후</div>` + later.map(({ s, ep }) => card(s, ep, { date: true })).join("");
+  }
+  if (rest.length) {
+    html += `<div class="section">미정 · 완결</div>` + rest.map((s) => card(s, null, {
+      muted: true, noTime: true, note: s.status === "Ended" || s.status === "Canceled" ? "완결" : "다음 회차 미정",
+    })).join("");
+  }
+  $("list").innerHTML = `<div class="edit-hint">편집 중 · 지울 프로그램의 ✕를 눌러주세요. 다 했으면 ✏️를 다시 눌러주세요.</div>` + html;
+};
+
+window.jumpTo = (i) => $("day-" + i)?.scrollIntoView({ behavior: "smooth", block: "start" });
+window.setTime = (id, v) => { if (v) times[id] = v; else delete times[id]; saveTimes(); render(); };
+window.toggleWatched = (key) => { if (watched.has(key)) watched.delete(key); else watched.add(key); saveWatched(); render(); };
+window.removeShow = (id) => { shows = shows.filter((s) => s.id !== id); save(); render(); if (!shows.length) setEditing(false); };
+
+const setEditing = (on) => { document.body.classList.toggle("editing", on); $("editBtn").classList.toggle("on", on); };
+$("editBtn").onclick = () => setEditing(!document.body.classList.contains("editing"));
+
+// ── 시트 열고 닫기 ──
+const openSheet = (id) => { $(id).classList.add("open"); document.body.style.overflow = "hidden"; };
+const closeSheet = (id) => { $(id).classList.remove("open"); document.body.style.overflow = ""; };
+document.querySelectorAll(".sheet").forEach((sh) => sh.addEventListener("click", (e) => { if (e.target.closest("[data-close]")) closeSheet(sh.id); }));
+document.addEventListener("keydown", (e) => { if (e.key === "Escape") document.querySelectorAll(".sheet.open").forEach((sh) => closeSheet(sh.id)); });
+
+// ── 검색 & 추가 ──
+const pickRowHtml = (r) => {
+  const added = shows.some((s) => s.id === r.id);
+  const provs = (r.provs || []).map((p) => `<span class="plat" style="--c:${p.color}">${p.label}</span>`).join("") || "OTT 정보 없음";
+  return `
+    <button class="pick" ${added ? "disabled" : ""} onclick="addShow(${r.id})">
+      ${posterHtml(r.poster_path, r.name)}
+      <div class="meta">
+        <div class="title"><span class="t">${esc(r.name)}</span></div>
+        <div class="y">${r.first_air_date ? r.first_air_date.slice(0, 4) : "?"} · ★ ${r.vote_average ? r.vote_average.toFixed(1) : "-"}</div>
+        <div class="line2">${provs}</div>
+      </div>
+      <span class="add">${added ? ICON_CHECK : ICON_PLUS}</span>
+    </button>`;
+};
+const renderResults = (list, label) => { $("results").innerHTML = (label ? `<div class="label">${label}</div>` : "") + list.map(pickRowHtml).join(""); };
+
+window.addShow = async (id) => {
+  if (shows.some((s) => s.id === id)) return;
+  try {
+    shows.push(await fetchShow(id)); save(); render();
+    if ($("q").value.trim() && lastResults.length) renderResults(lastResults);
+    else renderResults(browseList, "지금 방영 중");
+    toast("추가했어요");
+  } catch (e) { toast("프로그램 정보를 불러오지 못했어요."); }
+};
+
+const doSearch = async () => {
+  const q = $("q").value.trim();
+  if (!q) { renderResults(browseList, "지금 방영 중"); return; }
+  $("results").innerHTML = `<div class="loading">검색 중…</div>`;
+  try {
+    const data = await tmdb("/search/tv", "&query=" + encodeURIComponent(q));
+    lastResults = await attachProviders((data.results || []).slice(0, 8));
+    if (lastResults.length) renderResults(lastResults); else $("results").innerHTML = `<div class="loading">검색 결과가 없어요</div>`;
+  } catch (e) { $("results").innerHTML = `<div class="loading">검색에 실패했어요</div>`; }
+};
+
+window.openAdd = async () => {
+  openSheet("addSheet");
+  setTimeout(() => $("q").focus(), 250);
+  if (browseList.length === 0) {
+    $("results").innerHTML = `<div class="loading">불러오는 중…</div>`;
+    try {
+      const data = await tmdb("/discover/tv", `&with_origin_country=KR&sort_by=popularity.desc&air_date.gte=${ymd(-7)}&air_date.lte=${ymd(7)}`);
+      browseList = await attachProviders((data.results || []).slice(0, 20));
+    } catch (e) { $("results").innerHTML = `<div class="loading">목록을 불러오지 못했어요</div>`; return; }
+  }
+  if (!$("q").value.trim()) renderResults(browseList, "지금 방영 중");
+};
+$("addBtn").onclick = openAdd;
+$("q").addEventListener("keydown", (e) => { if (e.key === "Enter") doSearch(); });
+let searchTimer;
+$("q").addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(doSearch, 400); });
+
+// ── 새로고침 ──
+const refreshAll = async () => {
+  if (shows.length === 0) return;
+  $("refreshBtn").classList.add("spin");
+  try { shows = await Promise.all(shows.map((s) => fetchShow(s.id))); save(); render(); }
+  catch (e) { toast("일부 정보를 새로고침하지 못했어요."); }
+  $("refreshBtn").classList.remove("spin");
+};
+$("refreshBtn").onclick = refreshAll;
+
+render();
+if (shows.length > 0) refreshAll(); // 접속할 때마다 최신 회차 정보로 갱신
+// 자정이 지나면 오늘 표시 갱신
+setInterval(render, 5 * 60 * 1000);
+</script>
+</body>
+</html>

@@ -1,0 +1,7 @@
+# 블로그 캡처용 임시 페이지
+_seed.html
+_frame.html
+# 토스 버전 빌드 산출물
+toss/node_modules/
+toss/dist/
+*.ait
