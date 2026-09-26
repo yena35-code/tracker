@@ -86,10 +86,11 @@ textarea.inp{resize:none;height:70px;border:.5px solid var(--line);padding:10px;
 const KEY = "mb-v1";
 const TYPES = ["먹기", "가기", "보기", "해보기"], WITHS = ["혼자", "둘이", "친구랑"], PLACES = ["실내", "야외"], TIMES = ["반나절", "하루", "여행"], COSTS = ["무료", "가볍게", "큰맘"];
 const COLORS = ["#C9B8A8", "#A8AFA0", "#BFB29C", "#B59C8C", "#9FA7AE", "#B8A99A", "#A9A28F"];
+const AHEAD = 11; // 이번 달 + 앞으로 11개월 = 1년치 호를 미리 편집
 let S = load();
 let REC = [];
 const DEV = location.search.includes("dev"); // 테스트 버튼은 ?dev 로 열 때만
-let ui = { tab: "issue", listSeg: "mine", f: { season: true, type: null, with: null, place: null, time: null, cost: null, q: "" }, open: null };
+let ui = { tab: "issue", month: null, listSeg: "mine", f: { season: true, type: null, with: null, place: null, time: null, cost: null, q: "" }, open: null };
 
 function load() {
   try { const s = JSON.parse(localStorage.getItem(KEY)); if (s) return s; } catch (e) {}
@@ -103,10 +104,20 @@ const mk = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0"
 const curKey = () => mk(now());
 const monthOf = (k) => +k.slice(5);
 const yearOf = (k) => +k.slice(0, 4);
+const addMonths = (k, n) => mk(new Date(yearOf(k), monthOf(k) - 1 + n, 1));
 const EN = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-const prevKey = (k) => { const d = new Date(yearOf(k), monthOf(k) - 2, 1); return mk(d); };
-const stampOf = (iso) => { const d = new Date(iso); return `'${String(d.getFullYear()).slice(2)} ${d.getMonth() + 1} ${String(d.getDate()).padStart(2, "0")}`; };
+const pad2 = (n) => String(n).padStart(2, "0");
+const ymd = (d) => `${d.getFullYear()}-${pad2(d.getMonth() + 1)}-${pad2(d.getDate())}`;
+const fromYmd = (s) => new Date(s + "T12:00:00");
+const stampOf = (iso) => { const d = new Date(iso); return `'${String(d.getFullYear()).slice(2)} ${d.getMonth() + 1} ${pad2(d.getDate())}`; };
 const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const volLabel = (k) => `${yearOf(k) !== yearOf(curKey()) ? `${String(yearOf(k)).slice(2)}년 ` : ""}${monthOf(k)}월호`;
+function monthRange() {
+  const cur = curKey(), keys = Object.keys(S.issues).sort();
+  const first = keys[0] && keys[0] < cur ? keys[0] : cur;
+  const out = []; for (let k = first; k <= addMonths(cur, AHEAD); k = addMonths(k, 1)) out.push(k);
+  return out;
+}
 
 // ---------- 사진 (IndexedDB) ----------
 const dbp = new Promise((res) => {
@@ -134,57 +145,101 @@ function shrink(file) {
     img.src = URL.createObjectURL(file);
   });
 }
-async function hydratePhotos() {
-  for (const el of document.querySelectorAll("[data-photo]")) {
+// 사진 파일의 촬영일(EXIF DateTimeOriginal) 읽기. 없으면 null
+async function exifDate(file) {
+  try {
+    const v = new DataView(await file.slice(0, 256 * 1024).arrayBuffer());
+    if (v.getUint16(0) !== 0xffd8) return null;
+    let o = 2;
+    while (o + 4 < v.byteLength) {
+      const marker = v.getUint16(o), len = v.getUint16(o + 2);
+      if (marker === 0xffe1 && v.getUint32(o + 4) === 0x45786966) {
+        const t = o + 10, le = v.getUint16(t) === 0x4949;
+        const u16 = (p) => v.getUint16(p, le), u32 = (p) => v.getUint32(p, le);
+        const readIfd = (ifd, want) => {
+          const n = u16(t + ifd);
+          for (let i = 0; i < n; i++) {
+            const e = t + ifd + 2 + i * 12;
+            if (u16(e) === want) return e;
+          }
+          return null;
+        };
+        const str = (e) => { const cnt = u32(e + 4), p = t + u32(e + 8); let s = ""; for (let i = 0; i < cnt - 1; i++) s += String.fromCharCode(v.getUint8(p + i)); return s; };
+        const ifd0 = u32(t + 4);
+        const exifPtr = readIfd(ifd0, 0x8769);
+        let e = exifPtr ? readIfd(u32(exifPtr + 8), 0x9003) : null;
+        if (!e) e = readIfd(ifd0, 0x0132);
+        if (!e) return null;
+        const m = str(e).match(/^(\d{4}):(\d{2}):(\d{2})/);
+        return m ? `${m[1]}-${m[2]}-${m[3]}` : null;
+      }
+      if ((marker & 0xff00) !== 0xff00) break;
+      o += 2 + len;
+    }
+  } catch (e) {}
+  return null;
+}
+async function hydratePhotos(root = document) {
+  for (const el of root.querySelectorAll("[data-photo]")) {
+    if (el.querySelector("img")) continue;
     const u = await photoUrl(el.dataset.photo);
-    if (u) el.innerHTML = `<img src="${u}" alt="">` + el.innerHTML;
+    if (u) el.insertAdjacentHTML("afterbegin", `<img src="${u}" alt="">`);
   }
 }
 
 // ---------- 데이터 조작 ----------
+const byId = (id) => S.items.find((i) => i.id === id);
 const issueItems = (k) => S.items.filter((i) => i.issue === k).sort((a, b) => a.order - b.order);
 const doneIn = (k) => issueItems(k).filter((i) => i.done);
+const waiting = () => S.items.filter((i) => !i.done && (!i.issue || (i.issue < curKey())));
 function addItem(title, rec) {
   title = title.trim(); if (!title) return null;
   if (S.items.some((i) => i.title === title && !i.done)) { toast("이미 담겨 있어요"); return null; }
   const it = { id: "b" + S.seq++, title, recId: rec ? rec.id : null, tags: rec ? [rec.type, rec.time] : [], issue: null, order: 0, done: null, added: new Date().toISOString() };
   S.items.push(it); save(); return it;
 }
-function putInIssue(it) {
-  const k = curKey(), iss = S.issues[k];
-  if (!iss) { toast("먼저 이번 호를 만들어 주세요"); return; }
-  if (issueItems(k).length >= iss.slots) { toast(`이번 호는 ${iss.slots}개까지 실을 수 있어요`); return; }
-  it.issue = k; it.order = Date.now(); save(); toast(`${monthOf(k)}월호에 실었어요`);
+function ensureIssue(k) { if (!S.issues[k]) S.issues[k] = { slots: 5, created: new Date().toISOString() }; }
+function putInIssue(it, k) {
+  ensureIssue(k);
+  if (issueItems(k).length >= S.issues[k].slots) { toast(`${volLabel(k)}는 ${S.issues[k].slots}칸이 다 찼어요`); return false; }
+  it.issue = k; it.order = Date.now(); save(); toast(`${volLabel(k)}에 실었어요`); return true;
 }
-function createIssue(slots, carry) {
-  const k = curKey();
+function createIssue(k, slots, carry) {
   S.issues[k] = { slots, created: new Date().toISOString() };
-  if (carry) {
-    const leftovers = S.items.filter((i) => i.issue && i.issue < k && !i.done).slice(0, slots);
-    leftovers.forEach((i, n) => { i.issue = k; i.order = n; });
-  }
+  if (carry) S.items.filter((i) => i.issue && i.issue < k && !i.done).slice(0, slots).forEach((i, n) => { i.issue = k; i.order = n; });
   save();
 }
+const recOf = (it) => REC.find((r) => r.id === it.recId);
+function seasonHint(it) { const r = recOf(it); return r && r.seasonal ? r.months : null; }
 
 // ---------- 렌더 ----------
 const $app = document.getElementById("app");
 function render() {
+  if (!ui.month) ui.month = curKey();
   document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("on", b.dataset.tab === ui.tab));
   $app.innerHTML = ui.tab === "issue" ? viewIssue() : ui.tab === "list" ? viewList() : viewShelf();
-  hydratePhotos();
+  hydratePhotos($app);
+}
+
+function monthNav(k) {
+  const r = monthRange(), i = r.indexOf(k), cur = curKey();
+  const note = k === cur ? "이번 달" : k < cur ? "지난 호" : "미리 편집 중";
+  return `<div style="display:flex;align-items:center;justify-content:space-between;padding:18px 14px 0">
+    <button class="mono navb" data-mon="${r[i - 1] || ""}" ${i > 0 ? "" : "disabled style='opacity:.2'"}>◀</button>
+    <button class="mono" data-do="pickMonth" style="color:var(--ink)">VOL. ${pad2(monthOf(k))} · ${EN[monthOf(k) - 1]} ${yearOf(k)} <span style="color:${k === cur ? "var(--stamp)" : "var(--sub)"}">· ${note}</span></button>
+    <button class="mono navb" data-mon="${r[i + 1] || ""}" ${i < r.length - 1 ? "" : "disabled style='opacity:.2'"}>▶</button></div>`;
 }
 
 function viewIssue() {
-  const k = curKey(), m = monthOf(k), iss = S.issues[k];
+  const k = ui.month, m = monthOf(k), iss = S.issues[k], cur = curKey();
   if (!iss) {
-    const leftover = S.items.filter((i) => i.issue && i.issue < k && !i.done).length;
-    return `<div class="pad">
-      <div class="mono">VOL. ${String(m).padStart(2, "0")} · ${EN[m - 1]} ${yearOf(k)}</div>
-      <div class="h1 serif" style="margin-top:40px">${m}월호를<br>만들 시간이에요</div>
-      <p class="desc" style="margin:10px 0 28px">이번 달엔 버킷 몇 개를 실을까요?</p>
-      <div id="slotPick">${[3, 5, 8].map((n) => `<button class="chip ${n === 5 ? "on" : ""}" data-slots="${n}">${n}개</button>`).join("")}</div>
+    const leftover = k === cur ? S.items.filter((i) => i.issue && i.issue < k && !i.done).length : 0;
+    return `${monthNav(k)}<div class="pad">
+      <div class="h1 serif" style="margin-top:30px">${k > cur ? `${volLabel(k)}를<br>미리 만들어둘까요?` : `${volLabel(k)}를<br>만들 시간이에요`}</div>
+      <p class="desc" style="margin:10px 0 28px">이번 호엔 버킷 몇 개를 실을까요?</p>
+      <div id="slotPick">${[3, 5, 8, 10].map((n) => `<button class="chip ${n === 5 ? "on" : ""}" data-slots="${n}">${n}개</button>`).join("")}</div>
       ${leftover ? `<label class="small" style="display:flex;gap:8px;align-items:center;margin:18px 0 0"><input type="checkbox" id="carry" checked> 지난 호에서 못 이룬 ${leftover}개를 이번 호로 넘기기</label>` : ""}
-      <button class="pill" style="margin-top:28px" data-do="create">${m}월호 만들기</button>
+      <button class="pill" style="margin-top:28px" data-do="create">${volLabel(k)} 만들기</button>
     </div>`;
   }
   const list = issueItems(k), done = list.filter((i) => i.done);
@@ -193,20 +248,20 @@ function viewIssue() {
     ? `<span class="cap">${esc(last.title)}</span><span class="stamp">${stampOf(last.done.date)}</span>`
     : `<div class="empty">첫 번째로 이룬 버킷이<br>이번 호 표지가 돼요</div>`;
   const rows = [];
-  for (let n = 0; n < iss.slots; n++) {
+  for (let n = 0; n < Math.max(iss.slots, list.length); n++) {
     const it = list[n];
-    if (!it) { rows.push(`<button class="toc off" style="width:100%;text-align:left" data-go="list"><span class="n">${String(n + 1).padStart(2, "0")}</span><span class="t">+ 버킷 싣기</span></button>`); continue; }
+    if (!it) { rows.push(`<button class="toc off" style="width:100%;text-align:left" data-addto="${k}"><span class="n">${pad2(n + 1)}</span><span class="t">+ 버킷 싣기</span></button>`); continue; }
     rows.push(`<button class="toc ${it.done ? "" : "off"}" style="width:100%;text-align:left" data-item="${it.id}">
-      <span class="n">${String(n + 1).padStart(2, "0")}</span><span class="t" style="${it.done ? "" : "color:var(--ink)"}">${esc(it.title)}</span>
-      <span class="${it.done ? "stamp" : "tag"}">${it.done ? stampOf(it.done.date) : "이루러 가기"}</span></button>`);
+      <span class="n">${pad2(n + 1)}</span><span class="t" style="${it.done ? "" : "color:var(--ink)"}">${esc(it.title)}</span>
+      <span class="${it.done ? "stamp" : "tag"}">${it.done ? stampOf(it.done.date) : "✎"}</span></button>`);
   }
-  return `<div style="padding:22px 20px 0;display:flex;justify-content:space-between"><span class="mono">VOL. ${String(m).padStart(2, "0")}</span><span class="mono">${EN[m - 1]} ${yearOf(k)}</span></div>
-    <div class="serif" style="font-size:40px;letter-spacing:-1.5px;padding:0 20px 14px">월간버킷</div>
+  return `${monthNav(k)}
+    <div class="serif" style="font-size:40px;letter-spacing:-1.5px;padding:6px 20px 14px">월간버킷</div>
     <div class="cover" ${last && last.done.photo ? `data-photo="${last.id}"` : ""} style="${last && !last.done.photo ? `background:${last.done.color}` : ""}">${coverInner}</div>
     <div class="pad" style="padding-top:18px">
-      <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span class="mono">CONTENTS</span><span class="mono" style="color:var(--ink)">${done.length}/${iss.slots}</span></div>
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span class="mono">CONTENTS</span><button class="mono" data-do="slots" style="color:var(--ink)">${done.length}/${iss.slots} · 칸 수 ✎</button></div>
       ${rows.join("")}
-      <p class="small" style="margin-top:16px">${done.length === iss.slots ? `${m}월호 완성. 이달 말에 책장에 꽂혀요.` : `${m}월이 끝나면 이번 호가 책장에 꽂혀요.`}</p>
+      <p class="small" style="margin-top:16px">${k < cur ? "지난 호예요. 지금도 고칠 수 있어요." : k > cur ? `${m}월이 되면 이달의 호가 돼요. 제목을 누르면 고칠 수 있어요.` : done.length === iss.slots ? `${m}월호 완성. 이달 말에 책장에 꽂혀요.` : "제목을 누르면 고치거나 이룰 수 있어요."}</p>
     </div>`;
 }
 
@@ -217,16 +272,15 @@ function viewList() {
 }
 
 function viewMine() {
-  const k = curKey(), iss = S.issues[k];
-  const mine = S.items.filter((i) => !i.done && (!i.issue || i.issue !== k));
-  const inIssue = new Set(issueItems(k).map((i) => i.id));
-  const rows = mine.map((i) => `<div class="row"><div class="t">${esc(i.title)}${i.issue && i.issue < k ? ` <span class="tag">지난 호</span>` : ""}</div>
-    <button class="act" data-put="${i.id}">${iss ? `${monthOf(k)}월호에 싣기` : "싣기"}</button>
-    <button class="tag" data-del="${i.id}" aria-label="삭제">✕</button></div>`).join("");
+  const cur = curKey();
+  const wait = waiting();
+  const planned = S.items.filter((i) => !i.done && i.issue && i.issue >= cur).sort((a, b) => a.issue.localeCompare(b.issue) || a.order - b.order);
+  const row = (i, label) => `<div class="row"><button class="t" style="text-align:left" data-edit="${i.id}">${esc(i.title)} <span class="tag">✎</span>${label}</button>
+    <button class="act" data-put="${i.id}">${i.issue && i.issue >= cur ? "옮기기" : "싣기"}</button></div>`;
   return `<form id="addForm"><input class="inp" id="addInp" placeholder="하고 싶은 걸 한 줄로" autocomplete="off"></form>
-    <p class="small" style="margin:8px 0 10px">${mine.length}개가 기다리는 중 · 이번 호에 실린 건 이달의 호에서 봐요</p>
-    ${rows || `<p class="desc" style="padding:30px 0;text-align:center;line-height:1.8">아직 비어 있어요.<br>편집부 추천에서 골라 담아도 좋아요.</p>`}
-    ${inIssue.size ? "" : ""}`;
+    <p class="small" style="margin:8px 0 10px">${wait.length}개가 기다리는 중</p>
+    ${wait.map((i) => row(i, i.issue ? ` <span class="tag">지난 호</span>` : "")).join("") || `<p class="desc" style="padding:24px 0;text-align:center;line-height:1.8">기다리는 버킷이 없어요.<br>편집부 추천에서 골라 담아도 좋아요.</p>`}
+    ${planned.length ? `<div class="mono" style="margin-top:28px">실린 버킷 · ${planned.length}</div>${planned.map((i) => row(i, ` <span class="tag">${volLabel(i.issue)}</span>`)).join("")}` : ""}`;
 }
 
 function recFiltered() {
@@ -244,7 +298,7 @@ function viewRec() {
   const chips = (key, vals) => vals.map((v) => `<button class="chip ${f[key] === v ? "on" : ""}" data-f="${key}" data-v="${v}">${v}</button>`).join("");
   const have = new Set(S.items.map((i) => i.title));
   const list = recFiltered();
-  const rows = list.slice(0, 120).map((r) => `<div class="row"><div class="t">${esc(r.title)}<div class="tag" style="margin-top:3px">${r.type} · ${r.time} · ${r.cost}${r.seasonal && r.months.includes(m) ? ` · <span class="hot">${m}월 제철</span>` : ""}</div></div>
+  const rows = list.slice(0, 150).map((r) => `<div class="row"><div class="t">${esc(r.title)}<div class="tag" style="margin-top:3px">${r.type} · ${r.time} · ${r.cost}${r.seasonal ? ` · <span class="${r.months.includes(m) ? "hot" : ""}">${r.months.join("·")}월</span>` : ""}</div></div>
     <button class="act ${have.has(r.title) ? "done" : ""}" data-rec="${r.id}">${have.has(r.title) ? "담김" : "담기"}</button></div>`).join("");
   return `<input class="inp" id="q" placeholder="찾아보기  예: 카페, 캠핑, 꽃" value="${esc(f.q)}" autocomplete="off" style="margin-bottom:14px">
     <div class="hscroll"><button class="chip ${f.season ? "on" : ""}" data-f="season">${m}월 특집</button>${chips("with", WITHS)}</div>
@@ -256,21 +310,21 @@ function viewRec() {
 
 function viewShelf() {
   const k = curKey();
-  const keys = Object.keys(S.issues).sort();
-  const total = S.items.filter((i) => i.done && yearOf(i.done.date.slice(0, 7)) === yearOf(k)).length;
   if (ui.open) return viewVolume(ui.open);
+  const keys = Object.keys(S.issues).filter((x) => x <= k).sort();
+  const total = S.items.filter((i) => i.done && new Date(i.done.date).getFullYear() === yearOf(k)).length;
   const spines = keys.map((key, n) => {
     const d = doneIn(key).length, slots = S.issues[key].slots, cur = key === k;
-    const h = 62 + Math.round((d / slots) * 30);
+    const h = 62 + Math.round((Math.min(d, slots) / slots) * 30);
     const bg = cur ? "var(--ink)" : COLORS[n % COLORS.length];
     return `<button class="spine" data-vol="${key}" style="height:${h}%;background:${bg};${cur ? "color:var(--paper)" : ""}">
-      <span class="c">${String(monthOf(key)).padStart(2, "0")}</span><span class="v">${monthOf(key)}월호</span><span class="c">${d}/${slots}</span></button>`;
+      <span class="c">${pad2(monthOf(key))}</span><span class="v">${monthOf(key)}월호</span><span class="c">${d}/${slots}</span></button>`;
   }).join("");
-  const nm = monthOf(mk(new Date(yearOf(k), monthOf(k), 1)));
+  const nm = monthOf(addMonths(k, 1));
   return `<div class="pad">
     <div class="mono">ARCHIVE · ${yearOf(k)}</div><div class="h1 serif">책장</div>
     <p class="desc">올해 이룬 버킷 ${total}개</p>
-    <div class="shelf">${spines}<div class="spine next" style="height:70%"><span class="c">${String(nm).padStart(2, "0")}</span><span class="v">${nm}월호</span><span class="c">…</span></div></div>
+    <div class="shelf">${spines}<div class="spine next" style="height:70%"><span class="c">${pad2(nm)}</span><span class="v">${nm}월호</span><span class="c">…</span></div></div>
     <p class="small" style="margin-top:14px">${keys.length ? "책을 누르면 그달의 호를 펼쳐봐요" : "첫 호를 만들면 여기에 꽂혀요"}</p>
     ${DEV ? `<div class="dev"><span class="small" style="width:100%">시안 테스트용</span>
       <button data-do="sample">샘플 지난 호 채우기</button><button data-do="nextMonth">다음 달로 넘기기</button><button data-do="reset">전부 지우기</button></div>` : ""}
@@ -280,18 +334,19 @@ function viewShelf() {
 function viewVolume(key) {
   const m = monthOf(key), list = issueItems(key), done = list.filter((i) => i.done);
   const arts = done.map((i) => `<button class="art" data-item="${i.id}" ${i.done.photo ? `data-photo="${i.id}"` : ""} style="background:${i.done.color || "#C9B8A8"}"><span class="stamp">${stampOf(i.done.date)}</span></button>`).join("");
-  const undone = list.filter((i) => !i.done).map((i) => `<div class="toc off"><span class="t">${esc(i.title)}</span><span class="tag">못 이룸</span></div>`).join("");
+  const undone = list.filter((i) => !i.done).map((i) => `<button class="toc off" style="width:100%;text-align:left" data-item="${i.id}"><span class="t">${esc(i.title)}</span><span class="tag">못 이룸</span></button>`).join("");
   return `<div class="pad">
     <button class="small" data-do="closeVol">← 책장</button>
-    <div style="display:flex;justify-content:space-between;margin-top:18px"><span class="mono">VOL. ${String(m).padStart(2, "0")}</span><span class="mono">${EN[m - 1]} ${yearOf(key)}</span></div>
+    <div style="display:flex;justify-content:space-between;margin-top:18px"><span class="mono">VOL. ${pad2(m)}</span><span class="mono">${EN[m - 1]} ${yearOf(key)}</span></div>
     <div class="serif" style="font-size:32px;letter-spacing:-1px;margin:2px 0 4px">${m}월호</div>
     <p class="desc" style="margin-bottom:16px">${done.length}개를 이뤘어요</p>
     <div class="grid">${arts}</div>
-    <div style="margin-top:10px">${done.map((i, n) => `<button class="toc" style="width:100%;text-align:left" data-item="${i.id}"><span class="n">${String(n + 1).padStart(2, "0")}</span><span class="t">${esc(i.title)}</span><span class="stamp">${stampOf(i.done.date)}</span></button>`).join("")}${undone}</div>
+    <div style="margin-top:10px">${done.map((i, n) => `<button class="toc" style="width:100%;text-align:left" data-item="${i.id}"><span class="n">${pad2(n + 1)}</span><span class="t">${esc(i.title)}</span><span class="stamp">${stampOf(i.done.date)}</span></button>`).join("")}${undone}</div>
+    <button class="pill ghost" style="margin-top:22px" data-do="editVol" data-k="${key}">이 호 편집하기</button>
   </div>`;
 }
 
-// ---------- 시트 (이루기 / 기사) ----------
+// ---------- 시트 ----------
 function openSheet(html) {
   const bg = document.createElement("div");
   bg.className = "sheet-bg";
@@ -300,43 +355,133 @@ function openSheet(html) {
   document.body.appendChild(bg);
   return bg;
 }
+const closeAll = () => document.querySelectorAll(".sheet-bg").forEach((b) => b.remove());
+
+// 호 고르기 (싣기·옮기기)
+function openMonthPicker(it) {
+  const cur = curKey(), hint = seasonHint(it);
+  const months = []; for (let n = 0; n <= AHEAD; n++) months.push(addMonths(cur, n));
+  const btns = months.map((k) => {
+    const iss = S.issues[k], used = issueItems(k).length, slots = iss ? iss.slots : 5, full = used >= slots && it.issue !== k;
+    const season = hint && hint.includes(monthOf(k));
+    return `<button class="chip ${it.issue === k ? "on" : ""}" data-pick="${k}" ${full ? "disabled style='opacity:.35'" : ""}>${volLabel(k)} <span class="tag" style="${it.issue === k ? "color:inherit" : ""}">${used}/${slots}</span>${season ? ` <span class="tag hot">제철</span>` : ""}</button>`;
+  }).join("");
+  const bg = openSheet(`<div class="mono">PUT IN</div><div class="serif" style="font-size:20px;margin:4px 0 4px">${esc(it.title)}</div>
+    <p class="desc" style="margin-bottom:16px">어느 호에 실을까요?${hint ? ` <span style="color:var(--stamp)">${hint.join("·")}월이 제철이에요</span>` : ""}</p>
+    <div>${btns}</div>
+    ${it.issue ? `<button class="pill ghost" style="margin-top:16px" id="unput">호에서 빼기</button>` : ""}
+    <button class="pill ghost" style="margin-top:10px" data-close>닫기</button>`);
+  bg.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-pick]");
+    if (b) { if (it.issue === b.dataset.pick) { bg.remove(); return; } if (putInIssue(it, b.dataset.pick)) { bg.remove(); render(); } }
+    if (e.target.id === "unput") { it.issue = null; save(); bg.remove(); render(); toast("버킷리스트로 돌려놨어요"); }
+  });
+}
+
+// 호에 바로 싣기 (목차의 빈칸)
+function openAddTo(k) {
+  const wait = waiting();
+  const bg = openSheet(`<div class="mono">ADD TO ${EN[monthOf(k) - 1]}</div><div class="serif" style="font-size:20px;margin:4px 0 12px">${volLabel(k)}에 싣기</div>
+    <form id="quickAdd"><input class="inp" id="quickInp" placeholder="새로 적어서 바로 싣기" autocomplete="off"></form>
+    <div style="margin-top:10px">${wait.map((i) => `<div class="row"><span class="t">${esc(i.title)}</span><button class="act" data-pick="${i.id}">싣기</button></div>`).join("") || `<p class="desc" style="padding:18px 0">버킷리스트가 비어 있어요. 위에 바로 적거나 편집부 추천에서 담아와요.</p>`}</div>
+    <button class="pill ghost" style="margin-top:16px" data-close>닫기</button>`);
+  bg.addEventListener("click", (e) => { const b = e.target.closest("[data-pick]"); if (b && putInIssue(byId(b.dataset.pick), k)) { bg.remove(); render(); } });
+  bg.querySelector("#quickAdd").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const it = addItem(bg.querySelector("#quickInp").value);
+    if (it && putInIssue(it, k)) { bg.remove(); render(); }
+  });
+}
+
+// 버킷 편집 (제목) — 버킷리스트
+function openEdit(it) {
+  const bg = openSheet(`<div class="mono">EDIT</div>
+    <input class="inp serif" id="titleInp" value="${esc(it.title)}" style="font-size:20px;margin:6px 0 18px">
+    <button class="pill" id="saveBtn">저장</button>
+    <div style="display:flex;gap:8px;margin-top:10px"><button class="pill ghost" data-close style="flex:1">닫기</button><button class="pill ghost" id="delBtn" style="flex:1">삭제</button></div>`);
+  bg.querySelector("#saveBtn").onclick = () => { const v = bg.querySelector("#titleInp").value.trim(); if (v) { it.title = v; save(); bg.remove(); render(); toast("고쳤어요"); } };
+  bg.querySelector("#delBtn").onclick = () => { if (confirm(`"${it.title}"을(를) 지울까요?`)) { S.items = S.items.filter((i) => i !== it); save(); bg.remove(); render(); } };
+}
+
+// 호의 버킷 열기: 아직이면 이루기/편집, 이뤘으면 기사
 function openItem(id) {
-  const it = S.items.find((i) => i.id === id); if (!it) return;
+  const it = byId(id); if (!it) return;
   if (it.done) return openArticle(it);
-  let blob = null;
-  const bg = openSheet(`<div class="mono">NO. ${String(issueItems(it.issue).indexOf(it) + 1).padStart(2, "0")}</div>
-    <div class="serif" style="font-size:22px;margin:4px 0 2px">${esc(it.title)}</div>
-    <p class="desc">이뤘다면 사진 한 장과 한 줄을 남겨요</p>
-    <label class="photo-pick" id="pp"><span>사진 고르기 (선택)</span><input type="file" accept="image/*" hidden id="pf"></label>
-    <textarea class="inp" id="note" placeholder="한 줄 남기기  예: 이렇게 재밌는 걸 왜 이제야"></textarea>
-    <button class="pill" style="margin-top:16px" id="doneBtn">이뤘어요</button>
-    <div style="display:flex;gap:8px;margin-top:10px"><button class="pill ghost" data-close style="flex:1">나중에</button><button class="pill ghost" id="outBtn" style="flex:1">호에서 빼기</button></div>`);
+  openDoneEditor(it);
+}
+function openDoneEditor(it) {
+  const editing = !!it.done;
+  let blob = null, photoChanged = false;
+  const today = ymd(now());
+  const bg = openSheet(`<div class="mono">${volLabel(it.issue || curKey())} · ${editing ? "기사 고치기" : "NO. " + pad2(issueItems(it.issue).indexOf(it) + 1)}</div>
+    <input class="inp serif" id="titleInp" value="${esc(it.title)}" style="font-size:20px;margin:6px 0 4px">
+    <p class="desc">${editing ? "제목, 날짜, 사진, 한 줄 모두 고칠 수 있어요" : "제목은 눌러서 고칠 수 있어요. 이뤘다면 사진 한 장과 한 줄을 남겨요"}</p>
+    <label class="photo-pick" id="pp" ${editing && it.done.photo ? `data-photo="${it.id}"` : ""}><span>사진 고르기 (선택)</span><input type="file" accept="image/*" hidden id="pf"></label>
+    <label class="small" style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin:4px 0 12px">이룬 날
+      <input type="date" id="dateInp" value="${editing ? ymd(new Date(it.done.date)) : today}" style="border:.5px solid var(--line);border-radius:8px;padding:6px 8px;background:none"></label>
+    <p class="small" id="exifNote" style="margin:-6px 0 10px;min-height:14px"></p>
+    <textarea class="inp" id="note" placeholder="한 줄 남기기  예: 이렇게 재밌는 걸 왜 이제야">${editing ? esc(it.done.note || "") : ""}</textarea>
+    <button class="pill" style="margin-top:16px" id="doneBtn">${editing ? "저장" : "이뤘어요"}</button>
+    <div style="display:flex;gap:8px;margin-top:10px">
+      ${editing ? `<button class="pill ghost" id="undoBtn" style="flex:1">안 이룬 걸로</button>` : `<button class="pill ghost" id="titleOnly" style="flex:1">제목만 저장</button><button class="pill ghost" id="moveBtn" style="flex:1">다른 호로</button>`}
+    </div>`);
+  hydratePhotos(bg);
   bg.querySelector("#pf").onchange = async (e) => {
     const f = e.target.files[0]; if (!f) return;
-    blob = await shrink(f);
+    const d = await exifDate(f);
+    const note = bg.querySelector("#exifNote");
+    if (d) { bg.querySelector("#dateInp").value = d; note.textContent = `사진 찍은 날(${d.replaceAll("-", ".")})로 맞췄어요`; }
+    else note.textContent = "사진에 날짜 정보가 없어요. 날짜를 직접 골라주세요";
+    blob = await shrink(f); photoChanged = true;
     const pp = bg.querySelector("#pp");
     pp.querySelector("img")?.remove();
     pp.insertAdjacentHTML("afterbegin", `<img src="${URL.createObjectURL(blob)}" alt="">`);
   };
+  const setTitle = () => { const v = bg.querySelector("#titleInp").value.trim(); if (v) it.title = v; };
   bg.querySelector("#doneBtn").onclick = async () => {
-    const date = new Date(); date.setMonth(date.getMonth() + S.offset);
-    if (monthOf(mk(date)) !== monthOf(it.issue) && it.issue !== curKey()) date.setTime(new Date(yearOf(it.issue), monthOf(it.issue), 0).getTime());
-    it.done = { date: date.toISOString(), note: bg.querySelector("#note").value.trim(), photo: !!blob, color: COLORS[Math.floor(Math.random() * COLORS.length)] };
-    if (blob) await putPhoto(it.id, blob);
+    setTitle();
+    const date = fromYmd(bg.querySelector("#dateInp").value || today).toISOString();
+    const prev = it.done || {};
+    it.done = { date, note: bg.querySelector("#note").value.trim(), photo: photoChanged ? true : !!prev.photo, color: prev.color || COLORS[Math.floor(Math.random() * COLORS.length)] };
+    if (photoChanged) { await putPhoto(it.id, blob); delete urlCache[it.id]; }
     save(); bg.remove(); render();
-    const n = doneIn(it.issue).length;
-    toast(`${monthOf(it.issue)}월호 ${n}번째 기사가 완성됐어요`);
+    toast(editing ? "기사를 고쳤어요" : `${volLabel(it.issue)} ${doneIn(it.issue).length}번째 기사가 완성됐어요`);
   };
-  bg.querySelector("#outBtn").onclick = () => { it.issue = null; save(); bg.remove(); render(); };
+  if (editing) bg.querySelector("#undoBtn").onclick = () => { if (confirm("이룬 기록(사진·한 줄)을 지우고 목차로 돌릴까요?")) { it.done = null; save(); bg.remove(); render(); } };
+  else {
+    bg.querySelector("#titleOnly").onclick = () => { setTitle(); save(); bg.remove(); render(); toast("제목을 고쳤어요"); };
+    bg.querySelector("#moveBtn").onclick = () => { setTitle(); save(); bg.remove(); openMonthPicker(it); };
+  }
 }
 function openArticle(it) {
   const iss = issueItems(it.issue), n = iss.indexOf(it) + 1;
-  const bg = openSheet(`<div style="display:flex;justify-content:space-between"><span class="mono">${EN[monthOf(it.issue) - 1]} ${yearOf(it.issue)} · NO. ${String(n).padStart(2, "0")}</span><button class="mono" data-close>닫기</button></div>
+  const bg = openSheet(`<div style="display:flex;justify-content:space-between"><span class="mono">${EN[monthOf(it.issue) - 1]} ${yearOf(it.issue)} · NO. ${pad2(n)}</span><button class="mono" data-close>닫기</button></div>
     <div class="art" style="margin-top:12px;aspect-ratio:4/3;background:${it.done.color || "#C9B8A8"}" ${it.done.photo ? `data-photo="${it.id}"` : ""}><span class="stamp">${stampOf(it.done.date)}</span></div>
     <div class="serif" style="font-size:24px;margin:16px 0 8px">${esc(it.title)}</div>
     <p style="line-height:1.8;color:#5F5B55">${it.done.note ? esc(it.done.note) : `<span class="small">남긴 한 줄이 없어요</span>`}</p>
-    <div style="display:flex;justify-content:space-between;border-top:.5px solid var(--line);margin-top:22px;padding-top:12px"><span class="mono">${it.tags.join(" · ")}</span><span class="mono">✓ 이뤘어요</span></div>`);
-  (async () => { const el = bg.querySelector("[data-photo]"); if (el) { const u = await photoUrl(it.id); if (u) el.insertAdjacentHTML("afterbegin", `<img src="${u}" alt="">`); } })();
+    <div style="display:flex;justify-content:space-between;border-top:.5px solid var(--line);margin-top:22px;padding-top:12px"><span class="mono">${it.tags.join(" · ")}</span><button class="mono" id="editArt" style="color:var(--ink)">✎ 고치기</button></div>`);
+  hydratePhotos(bg);
+  bg.querySelector("#editArt").onclick = () => { bg.remove(); openDoneEditor(it); };
+}
+function openSlots(k) {
+  const used = issueItems(k).length, cur = S.issues[k].slots;
+  const bg = openSheet(`<div class="mono">SLOTS</div><div class="serif" style="font-size:20px;margin:4px 0 4px">${volLabel(k)} 칸 수</div>
+    <p class="desc" style="margin-bottom:16px">지금 실린 버킷 ${used}개보다 적게는 못 줄여요</p>
+    <div>${[3, 5, 8, 10].map((n) => `<button class="chip ${n === cur ? "on" : ""}" data-n="${n}" ${n < used ? "disabled style='opacity:.35'" : ""}>${n}칸</button>`).join("")}</div>
+    ${used === 0 ? `<button class="pill ghost" style="margin-top:16px" id="delIssue">이 호 없애기</button>` : ""}
+    <button class="pill ghost" style="margin-top:10px" data-close>닫기</button>`);
+  bg.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-n]");
+    if (b) { S.issues[k].slots = +b.dataset.n; save(); bg.remove(); render(); }
+    if (e.target.id === "delIssue") { delete S.issues[k]; save(); bg.remove(); render(); }
+  });
+}
+function openMonthJump() {
+  const r = monthRange();
+  const bg = openSheet(`<div class="mono">ISSUES</div><div class="serif" style="font-size:20px;margin:4px 0 14px">1년치 호</div>
+    <div>${r.map((k) => { const iss = S.issues[k]; return `<button class="chip ${k === ui.month ? "on" : ""}" data-jump="${k}">${volLabel(k)} <span class="tag" style="${k === ui.month ? "color:inherit" : ""}">${iss ? `${doneIn(k).length}/${iss.slots}` : "—"}</span></button>`; }).join("")}</div>
+    <button class="pill ghost" style="margin-top:14px" data-close>닫기</button>`);
+  bg.addEventListener("click", (e) => { const b = e.target.closest("[data-jump]"); if (b) { ui.month = b.dataset.jump; bg.remove(); render(); scrollTo(0, 0); } });
 }
 
 // ---------- 이벤트 ----------
@@ -346,30 +491,33 @@ function toast(msg) {
   const t = document.createElement("div"); t.className = "toast"; t.textContent = msg;
   document.body.appendChild(t); clearTimeout(tt); tt = setTimeout(() => t.remove(), 2200);
 }
-document.querySelector("nav").addEventListener("click", (e) => { const b = e.target.closest("[data-tab]"); if (b) { ui.tab = b.dataset.tab; ui.open = null; render(); scrollTo(0, 0); } });
+document.querySelector("nav").addEventListener("click", (e) => { const b = e.target.closest("[data-tab]"); if (b) { ui.tab = b.dataset.tab; ui.open = null; if (ui.tab === "issue") ui.month = curKey(); render(); scrollTo(0, 0); } });
 $app.addEventListener("click", (e) => {
-  const t = e.target.closest("button"); if (!t) return;
+  const t = e.target.closest("button"); if (!t || t.disabled) return;
   const d = t.dataset;
   if (d.slots) { document.querySelectorAll("#slotPick .chip").forEach((c) => c.classList.toggle("on", c === t)); return; }
-  if (d.do === "create") { const on = document.querySelector("#slotPick .chip.on"); createIssue(+on.dataset.slots, document.getElementById("carry")?.checked); render(); return; }
-  if (d.go) { ui.tab = d.go; render(); return; }
+  if (d.do === "create") { const on = document.querySelector("#slotPick .chip.on"); createIssue(ui.month, +on.dataset.slots, document.getElementById("carry")?.checked); render(); return; }
+  if (d.mon !== undefined) { if (d.mon) { ui.month = d.mon; render(); } return; }
+  if (d.do === "pickMonth") { openMonthJump(); return; }
+  if (d.do === "slots") { openSlots(ui.month); return; }
+  if (d.addto) { openAddTo(d.addto); return; }
   if (d.item) { openItem(d.item); return; }
+  if (d.edit) { openEdit(byId(d.edit)); return; }
   if (d.seg) { ui.listSeg = d.seg; render(); return; }
-  if (d.put) { putInIssue(S.items.find((i) => i.id === d.put)); render(); return; }
-  if (d.del) { S.items = S.items.filter((i) => i.id !== d.del); save(); render(); return; }
+  if (d.put) { openMonthPicker(byId(d.put)); return; }
   if (d.rec) { const r = REC.find((x) => x.id === +d.rec); if (addItem(r.title, r)) { toast("버킷리스트에 담았어요"); render(); } return; }
   if (d.f) { const k = d.f; ui.f[k] = k === "season" ? !ui.f.season : ui.f[k] === d.v ? null : d.v; render(); return; }
   if (d.vol) { ui.open = d.vol; render(); scrollTo(0, 0); return; }
   if (d.do === "closeVol") { ui.open = null; render(); return; }
-  if (d.do === "nextMonth") { S.offset++; save(); ui.tab = "issue"; render(); toast(`${monthOf(curKey())}월이 됐어요 (테스트)`); return; }
+  if (d.do === "editVol") { ui.tab = "issue"; ui.month = d.k; ui.open = null; render(); scrollTo(0, 0); return; }
+  if (d.do === "nextMonth") { S.offset++; save(); ui.tab = "issue"; ui.month = curKey(); render(); toast(`${monthOf(curKey())}월이 됐어요 (테스트)`); return; }
   if (d.do === "reset") { if (confirm("시안 데이터를 전부 지울까요?")) { localStorage.removeItem(KEY); indexedDB.deleteDatabase("mb-photos"); location.reload(); } return; }
   if (d.do === "sample") { sample(); render(); return; }
 });
 $app.addEventListener("submit", (e) => {
   if (e.target.id !== "addForm") return;
   e.preventDefault();
-  const v = document.getElementById("addInp").value;
-  if (addItem(v)) { render(); document.getElementById("addInp").focus(); }
+  if (addItem(document.getElementById("addInp").value)) { render(); document.getElementById("addInp").focus(); }
 });
 $app.addEventListener("input", (e) => {
   if (e.target.id !== "q") return;
@@ -391,7 +539,7 @@ function sample() {
     const doneCount = Math.max(1, slots - Math.floor(Math.random() * 3));
     pool.forEach((r, n) => {
       const it = { id: "b" + S.seq++, title: r.title, recId: r.id, tags: [r.type, r.time], issue: k, order: n, done: null, added: d.toISOString() };
-      if (n < doneCount) it.done = { date: new Date(d.getFullYear(), m - 1, 3 + n * 5).toISOString(), note: notes[n % notes.length], photo: false, color: COLORS[(n + back) % COLORS.length] };
+      if (n < doneCount) it.done = { date: new Date(d.getFullYear(), m - 1, 3 + n * 5, 12).toISOString(), note: notes[n % notes.length], photo: false, color: COLORS[(n + back) % COLORS.length] };
       S.items.push(it);
     });
   }
