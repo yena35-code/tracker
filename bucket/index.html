@@ -90,7 +90,7 @@ const AHEAD = 11; // 이번 달 + 앞으로 11개월 = 1년치 호를 미리 편
 let S = load();
 let REC = [];
 const DEV = location.search.includes("dev"); // 테스트 버튼은 ?dev 로 열 때만
-let ui = { tab: "issue", month: null, listSeg: "mine", f: { season: true, type: null, with: null, place: null, time: null, cost: null, q: "" }, open: null };
+let ui = { tab: "issue", month: null, listSeg: "mine", f: { month: null, type: null, with: null, place: null, time: null, cost: null, q: "" }, open: null };
 
 function load() {
   try { const s = JSON.parse(localStorage.getItem(KEY)); if (s) return s; } catch (e) {}
@@ -284,9 +284,9 @@ function viewMine() {
 }
 
 function recFiltered() {
-  const f = ui.f, m = monthOf(curKey());
+  const f = ui.f, m = f.month || monthOf(curKey());
   return REC.filter((r) =>
-    (!f.season || (r.seasonal && r.months.includes(m))) &&
+    (!f.month || (r.seasonal && r.months.includes(f.month))) &&
     (!f.type || r.type === f.type) && (!f.with || r.with.includes(f.with)) &&
     (!f.place || r.place === f.place) && (!f.time || r.time === f.time) && (!f.cost || r.cost === f.cost) &&
     (!f.q || r.title.includes(f.q)))
@@ -294,17 +294,20 @@ function recFiltered() {
     .sort((a, b) => (a.seasonal && a.months.includes(m) ? a.months.length : 13) - (b.seasonal && b.months.includes(m) ? b.months.length : 13));
 }
 function viewRec() {
-  const f = ui.f, m = monthOf(curKey());
+  if (ui.f.month === null) ui.f.month = monthOf(curKey());
+  const f = ui.f, m = f.month || monthOf(curKey());
+  const cm = monthOf(curKey()), months = Array.from({ length: 12 }, (_, i) => ((cm - 1 + i) % 12) + 1);
   const chips = (key, vals) => vals.map((v) => `<button class="chip ${f[key] === v ? "on" : ""}" data-f="${key}" data-v="${v}">${v}</button>`).join("");
   const have = new Set(S.items.map((i) => i.title));
   const list = recFiltered();
   const rows = list.slice(0, 150).map((r) => `<div class="row"><div class="t">${esc(r.title)}<div class="tag" style="margin-top:3px">${r.type} · ${r.time} · ${r.cost}${r.seasonal ? ` · <span class="${r.months.includes(m) ? "hot" : ""}">${r.months.join("·")}월</span>` : ""}</div></div>
     <button class="act ${have.has(r.title) ? "done" : ""}" data-rec="${r.id}">${have.has(r.title) ? "담김" : "담기"}</button></div>`).join("");
   return `<input class="inp" id="q" placeholder="찾아보기  예: 카페, 캠핑, 꽃" value="${esc(f.q)}" autocomplete="off" style="margin-bottom:14px">
-    <div class="hscroll"><button class="chip ${f.season ? "on" : ""}" data-f="season">${m}월 특집</button>${chips("with", WITHS)}</div>
+    <div class="hscroll">${months.map((x) => `<button class="chip ${f.month === x ? "on" : ""}" data-f="month" data-v="${x}">${x}월 특집</button>`).join("")}<button class="chip ${f.month === 0 ? "on" : ""}" data-f="month" data-v="0">전체</button></div>
+    <div class="hscroll">${chips("with", WITHS)}</div>
     <div class="hscroll">${chips("type", TYPES)}${chips("place", PLACES)}</div>
     <div class="hscroll">${chips("time", TIMES)}${chips("cost", COSTS)}</div>
-    <p class="small" style="margin:4px 0 4px">${list.length}개${f.season ? ` · ${m}월에만 어울리는 버킷` : ""}</p>
+    <p class="small" style="margin:4px 0 4px">${list.length}개${f.month ? ` · ${f.month}월에 어울리는 버킷` : " · 전체"}</p>
     ${rows || `<p class="desc" style="padding:30px 0;text-align:center">조건에 맞는 버킷이 없어요</p>`}`;
 }
 
@@ -506,7 +509,7 @@ $app.addEventListener("click", (e) => {
   if (d.seg) { ui.listSeg = d.seg; render(); return; }
   if (d.put) { openMonthPicker(byId(d.put)); return; }
   if (d.rec) { const r = REC.find((x) => x.id === +d.rec); if (addItem(r.title, r)) { toast("버킷리스트에 담았어요"); render(); } return; }
-  if (d.f) { const k = d.f; ui.f[k] = k === "season" ? !ui.f.season : ui.f[k] === d.v ? null : d.v; render(); return; }
+  if (d.f) { const k = d.f; ui.f[k] = k === "month" ? +d.v : ui.f[k] === d.v ? null : d.v; render(); return; }
   if (d.vol) { ui.open = d.vol; render(); scrollTo(0, 0); return; }
   if (d.do === "closeVol") { ui.open = null; render(); return; }
   if (d.do === "editVol") { ui.tab = "issue"; ui.month = d.k; ui.open = null; render(); scrollTo(0, 0); return; }
