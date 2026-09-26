@@ -191,6 +191,7 @@ async function hydratePhotos(root = document) {
 const byId = (id) => S.items.find((i) => i.id === id);
 const issueItems = (k) => S.items.filter((i) => i.issue === k).sort((a, b) => a.order - b.order);
 const doneIn = (k) => issueItems(k).filter((i) => i.done);
+const coverOf = (k) => { const d = [...doneIn(k)].sort((a, b) => b.done.date.localeCompare(a.done.date)); return d.find((i) => i.done.photo) || d[0]; };
 const waiting = () => S.items.filter((i) => !i.done && (!i.issue || (i.issue < curKey())));
 function addItem(title, rec) {
   title = title.trim(); if (!title) return null;
@@ -243,7 +244,7 @@ function viewIssue() {
     </div>`;
   }
   const list = issueItems(k), done = list.filter((i) => i.done);
-  const last = [...done].sort((a, b) => b.done.date.localeCompare(a.done.date))[0];
+  const last = coverOf(k);
   const coverInner = last
     ? `<span class="cap">${esc(last.title)}</span><span class="stamp">${stampOf(last.done.date)}</span>`
     : `<div class="empty">첫 번째로 이룬 버킷이<br>이번 호 표지가 돼요</div>`;
@@ -262,6 +263,7 @@ function viewIssue() {
       <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span class="mono">CONTENTS</span><button class="mono" data-do="slots" style="color:var(--ink)">${done.length}/${iss.slots} · 칸 수 ✎</button></div>
       ${rows.join("")}
       <p class="small" style="margin-top:16px">${k < cur ? "지난 호예요. 지금도 고칠 수 있어요." : k > cur ? `${m}월이 되면 이달의 호가 돼요. 제목을 누르면 고칠 수 있어요.` : done.length === iss.slots ? `${m}월호 완성. 이달 말에 책장에 꽂혀요.` : "제목을 누르면 고치거나 이룰 수 있어요."}</p>
+      ${done.length ? `<button class="pill ghost" style="margin-top:18px" data-do="cover" data-k="${k}">표지 이미지로 저장</button>` : ""}
     </div>`;
 }
 
@@ -329,6 +331,12 @@ function viewShelf() {
     <p class="desc">올해 이룬 버킷 ${total}개</p>
     <div class="shelf">${spines}<div class="spine next" style="height:70%"><span class="c">${pad2(nm)}</span><span class="v">${nm}월호</span><span class="c">…</span></div></div>
     <p class="small" style="margin-top:14px">${keys.length ? "책을 누르면 그달의 호를 펼쳐봐요" : "첫 호를 만들면 여기에 꽂혀요"}</p>
+    <div style="margin-top:36px;border-top:.5px solid var(--line);padding-top:16px">
+      <div class="mono">BACKUP</div>
+      <p class="small" style="margin:6px 0 12px;line-height:1.7">기록은 이 폰에만 저장돼요. 폰을 바꾸기 전이나 한 달에 한 번 백업해두세요.<br>마지막 백업: ${S.lastBackup ? S.lastBackup.slice(0, 10).replaceAll("-", ".") : "아직 없음"}</p>
+      <div style="display:flex;gap:8px"><button class="pill" style="flex:1" data-do="backup">백업 파일 저장</button>
+      <label class="pill ghost" style="flex:1;cursor:pointer">불러오기<input type="file" accept=".json,application/json" hidden id="restoreInp"></label></div>
+    </div>
     ${DEV ? `<div class="dev"><span class="small" style="width:100%">시안 테스트용</span>
       <button data-do="sample">샘플 지난 호 채우기</button><button data-do="nextMonth">다음 달로 넘기기</button><button data-do="reset">전부 지우기</button></div>` : ""}
   </div>`;
@@ -345,7 +353,8 @@ function viewVolume(key) {
     <p class="desc" style="margin-bottom:16px">${done.length}개를 이뤘어요</p>
     <div class="grid">${arts}</div>
     <div style="margin-top:10px">${done.map((i, n) => `<button class="toc" style="width:100%;text-align:left" data-item="${i.id}"><span class="n">${pad2(n + 1)}</span><span class="t">${esc(i.title)}</span><span class="stamp">${stampOf(i.done.date)}</span></button>`).join("")}${undone}</div>
-    <button class="pill ghost" style="margin-top:22px" data-do="editVol" data-k="${key}">이 호 편집하기</button>
+    ${done.length ? `<button class="pill" style="margin-top:22px" data-do="cover" data-k="${key}">표지 이미지로 저장</button>` : ""}
+    <button class="pill ghost" style="margin-top:10px" data-do="editVol" data-k="${key}">이 호 편집하기</button>
   </div>`;
 }
 
@@ -487,6 +496,95 @@ function openMonthJump() {
   bg.addEventListener("click", (e) => { const b = e.target.closest("[data-jump]"); if (b) { ui.month = b.dataset.jump; bg.remove(); render(); scrollTo(0, 0); } });
 }
 
+// ---------- 파일 내보내기 (공유 시트 → 파일 저장 / 없으면 다운로드) ----------
+async function saveFile(blob, name, title) {
+  const file = new File([blob], name, { type: blob.type });
+  if (navigator.canShare && navigator.canShare({ files: [file] })) {
+    try { await navigator.share({ files: [file], title }); return true; } catch (e) { if (e.name === "AbortError") return false; }
+  }
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = name;
+  document.body.appendChild(a); a.click(); a.remove();
+  return true;
+}
+const blobToDataUrl = (b) => new Promise((r) => { const fr = new FileReader(); fr.onload = () => r(fr.result); fr.readAsDataURL(b); });
+
+// ---------- 1. 백업 ----------
+async function backup() {
+  toast("백업 파일을 만드는 중…");
+  const photos = {};
+  for (const it of S.items) if (it.done && it.done.photo) { const b = await getPhoto(it.id); if (b) photos[it.id] = await blobToDataUrl(b); }
+  const data = { app: "월간버킷", version: 1, savedAt: new Date().toISOString(), state: { ...S, offset: 0 }, photos };
+  const blob = new Blob([JSON.stringify(data)], { type: "application/json" });
+  const ok = await saveFile(blob, `월간버킷-백업-${ymd(new Date()).replaceAll("-", "")}.json`, "월간버킷 백업");
+  if (ok) { S.lastBackup = new Date().toISOString(); save(); render(); toast("백업했어요. 파일 앱이나 카톡 나에게 보내기에 보관해두세요"); }
+}
+async function restore(file) {
+  let data;
+  try { data = JSON.parse(await file.text()); } catch (e) { toast("백업 파일을 읽을 수 없어요"); return; }
+  if (data.app !== "월간버킷" || !data.state) { toast("월간버킷 백업 파일이 아니에요"); return; }
+  const n = data.state.items.filter((i) => i.done).length;
+  if (!confirm(`${data.savedAt.slice(0, 10)} 백업(이룬 버킷 ${n}개)으로 되돌릴까요?
+지금 폰에 있는 기록은 이 백업으로 바뀌어요.`)) return;
+  for (const [id, url] of Object.entries(data.photos || {})) { const b = await (await fetch(url)).blob(); await putPhoto(id, b); delete urlCache[id]; }
+  S = data.state; S.lastBackup = data.savedAt; save(); ui.month = curKey(); render(); toast("백업을 불러왔어요");
+}
+document.addEventListener("change", (e) => { if (e.target.id === "restoreInp" && e.target.files[0]) restore(e.target.files[0]); });
+
+// ---------- 2. 표지 이미지 (1080×1350, 인스타 피드·블로그용) ----------
+async function makeCover(k) {
+  toast("표지를 만드는 중…");
+  await Promise.all([document.fonts.load('500 120px "Noto Serif KR"'), document.fonts.load('700 120px "Noto Serif KR"')]).catch(() => {});
+  const W = 1080, H = 1350, P = 72, c = document.createElement("canvas");
+  c.width = W; c.height = H;
+  const g = c.getContext("2d");
+  const INK = "#1E1D1B", PAPER = "#F7F5F1", SUB = "#8C8880", LINE = "#D9D5CE", STAMP = "#E0703C";
+  const MONO = 'ui-monospace, "SF Mono", Menlo, Consolas, monospace', SANS = '-apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif', SERIF = '"Noto Serif KR", serif';
+  const m = monthOf(k), list = issueItems(k), done = list.filter((i) => i.done), slots = S.issues[k].slots;
+  const coverIt = coverOf(k);
+  g.fillStyle = PAPER; g.fillRect(0, 0, W, H);
+  // 머리글
+  g.fillStyle = SUB; g.font = `28px ${MONO}`; g.textBaseline = "alphabetic";
+  g.fillText(`VOL. ${pad2(m)}`, P, 100);
+  g.textAlign = "right"; g.fillText(`${EN[m - 1]} ${yearOf(k)}`, W - P, 100); g.textAlign = "left";
+  g.fillStyle = INK; g.font = `700 150px ${SERIF}`; g.fillText("월간버킷", P - 6, 255);
+  // 표지 사진
+  const top = 300, ph = 560;
+  g.fillStyle = coverIt ? coverIt.done.color || "#C9B8A8" : "#2B2927"; g.fillRect(0, top, W, ph);
+  if (coverIt && coverIt.done.photo) {
+    const b = await getPhoto(coverIt.id);
+    if (b) {
+      const img = await new Promise((r) => { const i = new Image(); i.onload = () => r(i); i.onerror = () => r(null); i.src = URL.createObjectURL(b); });
+      if (img) { const s = Math.max(W / img.width, ph / img.height), w = img.width * s, h = img.height * s; g.save(); g.beginPath(); g.rect(0, top, W, ph); g.clip(); g.drawImage(img, (W - w) / 2, top + (ph - h) / 2, w, h); g.restore(); }
+    }
+  }
+  if (coverIt) {
+    g.fillStyle = "rgba(0,0,0,.28)"; g.fillRect(0, top + ph - 110, W, 110);
+    g.fillStyle = PAPER; g.font = `500 40px ${SANS}`; g.fillText(coverIt.title, P, top + ph - 42);
+    g.fillStyle = STAMP; g.font = `32px ${MONO}`; g.textAlign = "right"; g.fillText(stampOf(coverIt.done.date), W - P, top + ph - 44); g.textAlign = "left";
+  }
+  // 목차
+  let y = top + ph + 80;
+  g.fillStyle = SUB; g.font = `26px ${MONO}`; g.fillText("CONTENTS", P, y);
+  g.fillStyle = INK; g.textAlign = "right"; g.fillText(`${done.length}/${slots}`, W - P, y); g.textAlign = "left";
+  y += 26;
+  const rowH = Math.min(62, (H - 90 - y) / Math.max(slots, 1));
+  for (let n = 0; n < slots; n++) {
+    const it = list[n];
+    g.strokeStyle = LINE; g.lineWidth = 1.5; g.beginPath(); g.moveTo(P, y + rowH); g.lineTo(W - P, y + rowH); g.stroke();
+    const base = y + rowH * 0.66;
+    g.fillStyle = SUB; g.font = `26px ${MONO}`; g.fillText(pad2(n + 1), P, base);
+    g.fillStyle = it && it.done ? INK : "#B3AEA6"; g.font = `${it && it.done ? 500 : 400} 34px ${SANS}`;
+    let t = it ? it.title : "—"; while (g.measureText(t).width > W - P * 2 - 260 && t.length > 2) t = t.slice(0, -2) + "…";
+    g.fillText(t, P + 70, base);
+    if (it && it.done) { g.fillStyle = STAMP; g.font = `28px ${MONO}`; g.textAlign = "right"; g.fillText(stampOf(it.done.date), W - P, base); g.textAlign = "left"; }
+    y += rowH;
+  }
+  g.fillStyle = SUB; g.font = `24px ${MONO}`; g.fillText("MONTHLY BUCKET", P, H - 56);
+  const blob = await new Promise((r) => c.toBlob(r, "image/png"));
+  await saveFile(blob, `월간버킷-${yearOf(k)}-${pad2(m)}호.png`, `월간버킷 ${m}월호`);
+}
+
 // ---------- 이벤트 ----------
 let tt;
 function toast(msg) {
@@ -516,6 +614,8 @@ $app.addEventListener("click", (e) => {
   if (d.do === "nextMonth") { S.offset++; save(); ui.tab = "issue"; ui.month = curKey(); render(); toast(`${monthOf(curKey())}월이 됐어요 (테스트)`); return; }
   if (d.do === "reset") { if (confirm("시안 데이터를 전부 지울까요?")) { localStorage.removeItem(KEY); indexedDB.deleteDatabase("mb-photos"); location.reload(); } return; }
   if (d.do === "sample") { sample(); render(); return; }
+  if (d.do === "backup") { backup(); return; }
+  if (d.do === "cover") { makeCover(d.k); return; }
 });
 $app.addEventListener("submit", (e) => {
   if (e.target.id !== "addForm") return;
