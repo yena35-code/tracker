@@ -1,0 +1,406 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#F7F5F1">
+<title>월간버킷</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="월간버킷">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+KR:wght@500;700&display=swap" rel="stylesheet">
+<style>
+:root{--paper:#F7F5F1;--ink:#1E1D1B;--sub:#8C8880;--line:#D9D5CE;--faint:#B3AEA6;--stamp:#E0703C;--dark:#2B2927}
+*{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+html,body{background:var(--paper);color:var(--ink);font-family:-apple-system,BlinkMacSystemFont,"Apple SD Gothic Neo","Pretendard","Malgun Gothic",sans-serif;font-size:15px}
+body{max-width:480px;margin:0 auto;min-height:100vh;padding-bottom:84px}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer}
+input,textarea{font:inherit;color:inherit}
+.mono{font-family:ui-monospace,"SF Mono",Menlo,Consolas,monospace;font-size:11px;letter-spacing:1.5px;color:var(--sub)}
+.serif{font-family:"Noto Serif KR",serif;font-weight:500}
+.stamp{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;letter-spacing:1px;color:var(--stamp)}
+.pad{padding:22px 20px}
+.h1{font-size:26px;letter-spacing:-.5px;margin:4px 0 4px}
+.desc{font-size:13px;color:var(--sub)}
+.row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:13px 0;border-bottom:.5px solid var(--line)}
+.row .t{flex:1;min-width:0}
+.chip{display:inline-block;border:.5px solid var(--line);border-radius:999px;padding:6px 12px;font-size:13px;margin:0 6px 8px 0;white-space:nowrap}
+.chip.on{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.pill{display:block;width:100%;text-align:center;border-radius:999px;padding:13px;font-size:14px;background:var(--ink);color:var(--paper)}
+.pill.ghost{background:none;color:var(--ink);border:.5px solid var(--ink)}
+.small{font-size:12px;color:var(--sub)}
+.tag{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:11px;color:var(--sub);white-space:nowrap}
+.tag.hot{color:var(--stamp)}
+.act{font-size:13px;border:.5px solid var(--ink);border-radius:999px;padding:5px 12px;white-space:nowrap}
+.act.done{border-color:var(--line);color:var(--faint)}
+nav{position:fixed;left:0;right:0;bottom:0;background:var(--paper);border-top:.5px solid var(--line);display:flex;justify-content:center;padding-bottom:env(safe-area-inset-bottom)}
+nav div{display:flex;max-width:480px;width:100%}
+nav button{flex:1;padding:14px 0 16px;font-size:13px;color:var(--faint)}
+nav button.on{color:var(--ink);font-weight:600}
+.cover{background:var(--dark);aspect-ratio:4/3;position:relative;overflow:hidden}
+.cover img,.art img{width:100%;height:100%;object-fit:cover;display:block}
+.cover .cap{position:absolute;left:16px;bottom:14px;color:#F7F5F1;font-size:14px}
+.cover .stamp{position:absolute;right:12px;bottom:12px}
+.cover .empty{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;text-align:center;color:#8C8880;font-size:13px;line-height:1.7}
+.toc{display:flex;align-items:baseline;gap:10px;padding:12px 0;border-bottom:.5px solid var(--line)}
+.toc .n{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:12px;color:var(--sub);width:20px}
+.toc .t{flex:1}
+.toc.off .t{color:var(--faint)}
+.seg{display:flex;border:.5px solid var(--ink);border-radius:999px;overflow:hidden;margin:14px 0 6px}
+.seg button{flex:1;padding:9px;font-size:13px}
+.seg button.on{background:var(--ink);color:var(--paper)}
+.inp{width:100%;border:0;border-bottom:1px solid var(--ink);background:none;padding:12px 0;outline:none;font-size:15px}
+.inp::placeholder{color:var(--faint)}
+.shelf{display:flex;align-items:flex-end;gap:6px;height:230px;border-bottom:3px solid var(--ink);padding:0 4px;margin-top:22px;overflow-x:auto}
+.spine{flex:0 0 42px;display:flex;flex-direction:column;align-items:center;justify-content:space-between;padding:10px 0;color:var(--ink)}
+.spine .v{writing-mode:vertical-rl;font-family:"Noto Serif KR",serif;font-size:13px;letter-spacing:2px}
+.spine .c{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:10px}
+.spine.next{border:1px dashed var(--faint);color:var(--faint)}
+.grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.art{aspect-ratio:3/2;position:relative;background:#C9B8A8;overflow:hidden}
+.art .stamp{position:absolute;right:6px;bottom:4px;font-size:10px}
+.sheet-bg{position:fixed;inset:0;background:rgba(30,29,27,.45);display:flex;align-items:flex-end;justify-content:center;z-index:10}
+.sheet{background:var(--paper);width:100%;max-width:480px;border-radius:20px 20px 0 0;padding:22px 20px calc(24px + env(safe-area-inset-bottom));max-height:92vh;overflow-y:auto}
+.photo-pick{aspect-ratio:3/2;background:#E9E5DE;display:flex;align-items:center;justify-content:center;color:var(--sub);font-size:13px;position:relative;overflow:hidden;margin:14px 0}
+.photo-pick img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover}
+textarea.inp{resize:none;height:70px;border:.5px solid var(--line);padding:10px;border-radius:8px}
+.toast{position:fixed;left:50%;bottom:100px;transform:translateX(-50%);background:var(--ink);color:var(--paper);padding:11px 18px;border-radius:999px;font-size:13px;z-index:20;white-space:nowrap}
+.dev{margin-top:40px;border-top:.5px dashed var(--line);padding-top:14px;display:flex;gap:8px;flex-wrap:wrap}
+.dev button{font-size:12px;color:var(--sub);border:.5px dashed var(--faint);border-radius:6px;padding:6px 10px}
+.hscroll{overflow-x:auto;white-space:nowrap;margin:0 -20px;padding:0 20px;scrollbar-width:none}
+.hscroll::-webkit-scrollbar{display:none}
+</style>
+</head>
+<body>
+<main id="app"></main>
+<nav><div>
+  <button data-tab="issue">이달의 호</button>
+  <button data-tab="list">버킷리스트</button>
+  <button data-tab="shelf">책장</button>
+</div></nav>
+<script>
+// ---------- 상태 ----------
+const KEY = "mb-v1";
+const TYPES = ["먹기", "가기", "보기", "해보기"], WITHS = ["혼자", "둘이", "친구랑"], PLACES = ["실내", "야외"], TIMES = ["반나절", "하루", "여행"], COSTS = ["무료", "가볍게", "큰맘"];
+const COLORS = ["#C9B8A8", "#A8AFA0", "#BFB29C", "#B59C8C", "#9FA7AE", "#B8A99A", "#A9A28F"];
+let S = load();
+let REC = [];
+const DEV = location.search.includes("dev"); // 테스트 버튼은 ?dev 로 열 때만
+let ui = { tab: "issue", listSeg: "mine", f: { season: true, type: null, with: null, place: null, time: null, cost: null, q: "" }, open: null };
+
+function load() {
+  try { const s = JSON.parse(localStorage.getItem(KEY)); if (s) return s; } catch (e) {}
+  return { items: [], issues: {}, offset: 0, seq: 1 };
+}
+function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) { toast("저장 공간이 부족해요"); } }
+
+// ---------- 날짜 ----------
+function now() { const d = new Date(); d.setMonth(d.getMonth() + S.offset); return d; }
+const mk = (d) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+const curKey = () => mk(now());
+const monthOf = (k) => +k.slice(5);
+const yearOf = (k) => +k.slice(0, 4);
+const EN = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
+const prevKey = (k) => { const d = new Date(yearOf(k), monthOf(k) - 2, 1); return mk(d); };
+const stampOf = (iso) => { const d = new Date(iso); return `'${String(d.getFullYear()).slice(2)} ${d.getMonth() + 1} ${String(d.getDate()).padStart(2, "0")}`; };
+const esc = (s) => String(s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+
+// ---------- 사진 (IndexedDB) ----------
+const dbp = new Promise((res) => {
+  try {
+    const r = indexedDB.open("mb-photos", 1);
+    r.onupgradeneeded = () => r.result.createObjectStore("p");
+    r.onsuccess = () => res(r.result);
+    r.onerror = () => res(null);
+  } catch (e) { res(null); }
+});
+async function putPhoto(id, blob) { const db = await dbp; if (!db) return; return new Promise((r) => { const t = db.transaction("p", "readwrite"); t.objectStore("p").put(blob, id); t.oncomplete = r; t.onerror = r; }); }
+async function getPhoto(id) { const db = await dbp; if (!db) return null; return new Promise((r) => { const q = db.transaction("p").objectStore("p").get(id); q.onsuccess = () => r(q.result || null); q.onerror = () => r(null); }); }
+const urlCache = {};
+async function photoUrl(id) { if (urlCache[id]) return urlCache[id]; const b = await getPhoto(id); if (!b) return null; return (urlCache[id] = URL.createObjectURL(b)); }
+function shrink(file) {
+  return new Promise((res) => {
+    const img = new Image();
+    img.onload = () => {
+      const s = Math.min(1, 1280 / Math.max(img.width, img.height));
+      const c = document.createElement("canvas");
+      c.width = img.width * s; c.height = img.height * s;
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      c.toBlob((b) => res(b), "image/jpeg", 0.82);
+    };
+    img.src = URL.createObjectURL(file);
+  });
+}
+async function hydratePhotos() {
+  for (const el of document.querySelectorAll("[data-photo]")) {
+    const u = await photoUrl(el.dataset.photo);
+    if (u) el.innerHTML = `<img src="${u}" alt="">` + el.innerHTML;
+  }
+}
+
+// ---------- 데이터 조작 ----------
+const issueItems = (k) => S.items.filter((i) => i.issue === k).sort((a, b) => a.order - b.order);
+const doneIn = (k) => issueItems(k).filter((i) => i.done);
+function addItem(title, rec) {
+  title = title.trim(); if (!title) return null;
+  if (S.items.some((i) => i.title === title && !i.done)) { toast("이미 담겨 있어요"); return null; }
+  const it = { id: "b" + S.seq++, title, recId: rec ? rec.id : null, tags: rec ? [rec.type, rec.time] : [], issue: null, order: 0, done: null, added: new Date().toISOString() };
+  S.items.push(it); save(); return it;
+}
+function putInIssue(it) {
+  const k = curKey(), iss = S.issues[k];
+  if (!iss) { toast("먼저 이번 호를 만들어 주세요"); return; }
+  if (issueItems(k).length >= iss.slots) { toast(`이번 호는 ${iss.slots}개까지 실을 수 있어요`); return; }
+  it.issue = k; it.order = Date.now(); save(); toast(`${monthOf(k)}월호에 실었어요`);
+}
+function createIssue(slots, carry) {
+  const k = curKey();
+  S.issues[k] = { slots, created: new Date().toISOString() };
+  if (carry) {
+    const leftovers = S.items.filter((i) => i.issue && i.issue < k && !i.done).slice(0, slots);
+    leftovers.forEach((i, n) => { i.issue = k; i.order = n; });
+  }
+  save();
+}
+
+// ---------- 렌더 ----------
+const $app = document.getElementById("app");
+function render() {
+  document.querySelectorAll("nav button").forEach((b) => b.classList.toggle("on", b.dataset.tab === ui.tab));
+  $app.innerHTML = ui.tab === "issue" ? viewIssue() : ui.tab === "list" ? viewList() : viewShelf();
+  hydratePhotos();
+}
+
+function viewIssue() {
+  const k = curKey(), m = monthOf(k), iss = S.issues[k];
+  if (!iss) {
+    const leftover = S.items.filter((i) => i.issue && i.issue < k && !i.done).length;
+    return `<div class="pad">
+      <div class="mono">VOL. ${String(m).padStart(2, "0")} · ${EN[m - 1]} ${yearOf(k)}</div>
+      <div class="h1 serif" style="margin-top:40px">${m}월호를<br>만들 시간이에요</div>
+      <p class="desc" style="margin:10px 0 28px">이번 달엔 버킷 몇 개를 실을까요?</p>
+      <div id="slotPick">${[3, 5, 8].map((n) => `<button class="chip ${n === 5 ? "on" : ""}" data-slots="${n}">${n}개</button>`).join("")}</div>
+      ${leftover ? `<label class="small" style="display:flex;gap:8px;align-items:center;margin:18px 0 0"><input type="checkbox" id="carry" checked> 지난 호에서 못 이룬 ${leftover}개를 이번 호로 넘기기</label>` : ""}
+      <button class="pill" style="margin-top:28px" data-do="create">${m}월호 만들기</button>
+    </div>`;
+  }
+  const list = issueItems(k), done = list.filter((i) => i.done);
+  const last = [...done].sort((a, b) => b.done.date.localeCompare(a.done.date))[0];
+  const coverInner = last
+    ? `<span class="cap">${esc(last.title)}</span><span class="stamp">${stampOf(last.done.date)}</span>`
+    : `<div class="empty">첫 번째로 이룬 버킷이<br>이번 호 표지가 돼요</div>`;
+  const rows = [];
+  for (let n = 0; n < iss.slots; n++) {
+    const it = list[n];
+    if (!it) { rows.push(`<button class="toc off" style="width:100%;text-align:left" data-go="list"><span class="n">${String(n + 1).padStart(2, "0")}</span><span class="t">+ 버킷 싣기</span></button>`); continue; }
+    rows.push(`<button class="toc ${it.done ? "" : "off"}" style="width:100%;text-align:left" data-item="${it.id}">
+      <span class="n">${String(n + 1).padStart(2, "0")}</span><span class="t" style="${it.done ? "" : "color:var(--ink)"}">${esc(it.title)}</span>
+      <span class="${it.done ? "stamp" : "tag"}">${it.done ? stampOf(it.done.date) : "이루러 가기"}</span></button>`);
+  }
+  return `<div style="padding:22px 20px 0;display:flex;justify-content:space-between"><span class="mono">VOL. ${String(m).padStart(2, "0")}</span><span class="mono">${EN[m - 1]} ${yearOf(k)}</span></div>
+    <div class="serif" style="font-size:40px;letter-spacing:-1.5px;padding:0 20px 14px">월간버킷</div>
+    <div class="cover" ${last && last.done.photo ? `data-photo="${last.id}"` : ""} style="${last && !last.done.photo ? `background:${last.done.color}` : ""}">${coverInner}</div>
+    <div class="pad" style="padding-top:18px">
+      <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span class="mono">CONTENTS</span><span class="mono" style="color:var(--ink)">${done.length}/${iss.slots}</span></div>
+      ${rows.join("")}
+      <p class="small" style="margin-top:16px">${done.length === iss.slots ? `${m}월호 완성. 이달 말에 책장에 꽂혀요.` : `${m}월이 끝나면 이번 호가 책장에 꽂혀요.`}</p>
+    </div>`;
+}
+
+function viewList() {
+  const seg = `<div class="seg"><button data-seg="mine" class="${ui.listSeg === "mine" ? "on" : ""}">내 버킷</button><button data-seg="rec" class="${ui.listSeg === "rec" ? "on" : ""}">편집부 추천</button></div>`;
+  const head = `<div class="mono">DRAFTS</div><div class="h1 serif">버킷리스트</div><p class="desc">언젠가 싣고 싶은 이야기들</p>${seg}`;
+  return `<div class="pad">${head}${ui.listSeg === "mine" ? viewMine() : viewRec()}</div>`;
+}
+
+function viewMine() {
+  const k = curKey(), iss = S.issues[k];
+  const mine = S.items.filter((i) => !i.done && (!i.issue || i.issue !== k));
+  const inIssue = new Set(issueItems(k).map((i) => i.id));
+  const rows = mine.map((i) => `<div class="row"><div class="t">${esc(i.title)}${i.issue && i.issue < k ? ` <span class="tag">지난 호</span>` : ""}</div>
+    <button class="act" data-put="${i.id}">${iss ? `${monthOf(k)}월호에 싣기` : "싣기"}</button>
+    <button class="tag" data-del="${i.id}" aria-label="삭제">✕</button></div>`).join("");
+  return `<form id="addForm"><input class="inp" id="addInp" placeholder="하고 싶은 걸 한 줄로" autocomplete="off"></form>
+    <p class="small" style="margin:8px 0 10px">${mine.length}개가 기다리는 중 · 이번 호에 실린 건 이달의 호에서 봐요</p>
+    ${rows || `<p class="desc" style="padding:30px 0;text-align:center;line-height:1.8">아직 비어 있어요.<br>편집부 추천에서 골라 담아도 좋아요.</p>`}
+    ${inIssue.size ? "" : ""}`;
+}
+
+function recFiltered() {
+  const f = ui.f, m = monthOf(curKey());
+  return REC.filter((r) =>
+    (!f.season || (r.seasonal && r.months.includes(m))) &&
+    (!f.type || r.type === f.type) && (!f.with || r.with.includes(f.with)) &&
+    (!f.place || r.place === f.place) && (!f.time || r.time === f.time) && (!f.cost || r.cost === f.cost) &&
+    (!f.q || r.title.includes(f.q)))
+    // 그달에만 어울리는 것(시즌이 짧은 것)부터
+    .sort((a, b) => (a.seasonal && a.months.includes(m) ? a.months.length : 13) - (b.seasonal && b.months.includes(m) ? b.months.length : 13));
+}
+function viewRec() {
+  const f = ui.f, m = monthOf(curKey());
+  const chips = (key, vals) => vals.map((v) => `<button class="chip ${f[key] === v ? "on" : ""}" data-f="${key}" data-v="${v}">${v}</button>`).join("");
+  const have = new Set(S.items.map((i) => i.title));
+  const list = recFiltered();
+  const rows = list.slice(0, 120).map((r) => `<div class="row"><div class="t">${esc(r.title)}<div class="tag" style="margin-top:3px">${r.type} · ${r.time} · ${r.cost}${r.seasonal && r.months.includes(m) ? ` · <span class="hot">${m}월 제철</span>` : ""}</div></div>
+    <button class="act ${have.has(r.title) ? "done" : ""}" data-rec="${r.id}">${have.has(r.title) ? "담김" : "담기"}</button></div>`).join("");
+  return `<input class="inp" id="q" placeholder="찾아보기  예: 카페, 캠핑, 꽃" value="${esc(f.q)}" autocomplete="off" style="margin-bottom:14px">
+    <div class="hscroll"><button class="chip ${f.season ? "on" : ""}" data-f="season">${m}월 특집</button>${chips("with", WITHS)}</div>
+    <div class="hscroll">${chips("type", TYPES)}${chips("place", PLACES)}</div>
+    <div class="hscroll">${chips("time", TIMES)}${chips("cost", COSTS)}</div>
+    <p class="small" style="margin:4px 0 4px">${list.length}개${f.season ? ` · ${m}월에만 어울리는 버킷` : ""}</p>
+    ${rows || `<p class="desc" style="padding:30px 0;text-align:center">조건에 맞는 버킷이 없어요</p>`}`;
+}
+
+function viewShelf() {
+  const k = curKey();
+  const keys = Object.keys(S.issues).sort();
+  const total = S.items.filter((i) => i.done && yearOf(i.done.date.slice(0, 7)) === yearOf(k)).length;
+  if (ui.open) return viewVolume(ui.open);
+  const spines = keys.map((key, n) => {
+    const d = doneIn(key).length, slots = S.issues[key].slots, cur = key === k;
+    const h = 62 + Math.round((d / slots) * 30);
+    const bg = cur ? "var(--ink)" : COLORS[n % COLORS.length];
+    return `<button class="spine" data-vol="${key}" style="height:${h}%;background:${bg};${cur ? "color:var(--paper)" : ""}">
+      <span class="c">${String(monthOf(key)).padStart(2, "0")}</span><span class="v">${monthOf(key)}월호</span><span class="c">${d}/${slots}</span></button>`;
+  }).join("");
+  const nm = monthOf(mk(new Date(yearOf(k), monthOf(k), 1)));
+  return `<div class="pad">
+    <div class="mono">ARCHIVE · ${yearOf(k)}</div><div class="h1 serif">책장</div>
+    <p class="desc">올해 이룬 버킷 ${total}개</p>
+    <div class="shelf">${spines}<div class="spine next" style="height:70%"><span class="c">${String(nm).padStart(2, "0")}</span><span class="v">${nm}월호</span><span class="c">…</span></div></div>
+    <p class="small" style="margin-top:14px">${keys.length ? "책을 누르면 그달의 호를 펼쳐봐요" : "첫 호를 만들면 여기에 꽂혀요"}</p>
+    ${DEV ? `<div class="dev"><span class="small" style="width:100%">시안 테스트용</span>
+      <button data-do="sample">샘플 지난 호 채우기</button><button data-do="nextMonth">다음 달로 넘기기</button><button data-do="reset">전부 지우기</button></div>` : ""}
+  </div>`;
+}
+
+function viewVolume(key) {
+  const m = monthOf(key), list = issueItems(key), done = list.filter((i) => i.done);
+  const arts = done.map((i) => `<button class="art" data-item="${i.id}" ${i.done.photo ? `data-photo="${i.id}"` : ""} style="background:${i.done.color || "#C9B8A8"}"><span class="stamp">${stampOf(i.done.date)}</span></button>`).join("");
+  const undone = list.filter((i) => !i.done).map((i) => `<div class="toc off"><span class="t">${esc(i.title)}</span><span class="tag">못 이룸</span></div>`).join("");
+  return `<div class="pad">
+    <button class="small" data-do="closeVol">← 책장</button>
+    <div style="display:flex;justify-content:space-between;margin-top:18px"><span class="mono">VOL. ${String(m).padStart(2, "0")}</span><span class="mono">${EN[m - 1]} ${yearOf(key)}</span></div>
+    <div class="serif" style="font-size:32px;letter-spacing:-1px;margin:2px 0 4px">${m}월호</div>
+    <p class="desc" style="margin-bottom:16px">${done.length}개를 이뤘어요</p>
+    <div class="grid">${arts}</div>
+    <div style="margin-top:10px">${done.map((i, n) => `<button class="toc" style="width:100%;text-align:left" data-item="${i.id}"><span class="n">${String(n + 1).padStart(2, "0")}</span><span class="t">${esc(i.title)}</span><span class="stamp">${stampOf(i.done.date)}</span></button>`).join("")}${undone}</div>
+  </div>`;
+}
+
+// ---------- 시트 (이루기 / 기사) ----------
+function openSheet(html) {
+  const bg = document.createElement("div");
+  bg.className = "sheet-bg";
+  bg.innerHTML = `<div class="sheet">${html}</div>`;
+  bg.addEventListener("click", (e) => { if (e.target === bg || e.target.closest("[data-close]")) bg.remove(); });
+  document.body.appendChild(bg);
+  return bg;
+}
+function openItem(id) {
+  const it = S.items.find((i) => i.id === id); if (!it) return;
+  if (it.done) return openArticle(it);
+  let blob = null;
+  const bg = openSheet(`<div class="mono">NO. ${String(issueItems(it.issue).indexOf(it) + 1).padStart(2, "0")}</div>
+    <div class="serif" style="font-size:22px;margin:4px 0 2px">${esc(it.title)}</div>
+    <p class="desc">이뤘다면 사진 한 장과 한 줄을 남겨요</p>
+    <label class="photo-pick" id="pp"><span>사진 고르기 (선택)</span><input type="file" accept="image/*" hidden id="pf"></label>
+    <textarea class="inp" id="note" placeholder="한 줄 남기기  예: 이렇게 재밌는 걸 왜 이제야"></textarea>
+    <button class="pill" style="margin-top:16px" id="doneBtn">이뤘어요</button>
+    <div style="display:flex;gap:8px;margin-top:10px"><button class="pill ghost" data-close style="flex:1">나중에</button><button class="pill ghost" id="outBtn" style="flex:1">호에서 빼기</button></div>`);
+  bg.querySelector("#pf").onchange = async (e) => {
+    const f = e.target.files[0]; if (!f) return;
+    blob = await shrink(f);
+    const pp = bg.querySelector("#pp");
+    pp.querySelector("img")?.remove();
+    pp.insertAdjacentHTML("afterbegin", `<img src="${URL.createObjectURL(blob)}" alt="">`);
+  };
+  bg.querySelector("#doneBtn").onclick = async () => {
+    const date = new Date(); date.setMonth(date.getMonth() + S.offset);
+    if (monthOf(mk(date)) !== monthOf(it.issue) && it.issue !== curKey()) date.setTime(new Date(yearOf(it.issue), monthOf(it.issue), 0).getTime());
+    it.done = { date: date.toISOString(), note: bg.querySelector("#note").value.trim(), photo: !!blob, color: COLORS[Math.floor(Math.random() * COLORS.length)] };
+    if (blob) await putPhoto(it.id, blob);
+    save(); bg.remove(); render();
+    const n = doneIn(it.issue).length;
+    toast(`${monthOf(it.issue)}월호 ${n}번째 기사가 완성됐어요`);
+  };
+  bg.querySelector("#outBtn").onclick = () => { it.issue = null; save(); bg.remove(); render(); };
+}
+function openArticle(it) {
+  const iss = issueItems(it.issue), n = iss.indexOf(it) + 1;
+  const bg = openSheet(`<div style="display:flex;justify-content:space-between"><span class="mono">${EN[monthOf(it.issue) - 1]} ${yearOf(it.issue)} · NO. ${String(n).padStart(2, "0")}</span><button class="mono" data-close>닫기</button></div>
+    <div class="art" style="margin-top:12px;aspect-ratio:4/3;background:${it.done.color || "#C9B8A8"}" ${it.done.photo ? `data-photo="${it.id}"` : ""}><span class="stamp">${stampOf(it.done.date)}</span></div>
+    <div class="serif" style="font-size:24px;margin:16px 0 8px">${esc(it.title)}</div>
+    <p style="line-height:1.8;color:#5F5B55">${it.done.note ? esc(it.done.note) : `<span class="small">남긴 한 줄이 없어요</span>`}</p>
+    <div style="display:flex;justify-content:space-between;border-top:.5px solid var(--line);margin-top:22px;padding-top:12px"><span class="mono">${it.tags.join(" · ")}</span><span class="mono">✓ 이뤘어요</span></div>`);
+  (async () => { const el = bg.querySelector("[data-photo]"); if (el) { const u = await photoUrl(it.id); if (u) el.insertAdjacentHTML("afterbegin", `<img src="${u}" alt="">`); } })();
+}
+
+// ---------- 이벤트 ----------
+let tt;
+function toast(msg) {
+  document.querySelector(".toast")?.remove();
+  const t = document.createElement("div"); t.className = "toast"; t.textContent = msg;
+  document.body.appendChild(t); clearTimeout(tt); tt = setTimeout(() => t.remove(), 2200);
+}
+document.querySelector("nav").addEventListener("click", (e) => { const b = e.target.closest("[data-tab]"); if (b) { ui.tab = b.dataset.tab; ui.open = null; render(); scrollTo(0, 0); } });
+$app.addEventListener("click", (e) => {
+  const t = e.target.closest("button"); if (!t) return;
+  const d = t.dataset;
+  if (d.slots) { document.querySelectorAll("#slotPick .chip").forEach((c) => c.classList.toggle("on", c === t)); return; }
+  if (d.do === "create") { const on = document.querySelector("#slotPick .chip.on"); createIssue(+on.dataset.slots, document.getElementById("carry")?.checked); render(); return; }
+  if (d.go) { ui.tab = d.go; render(); return; }
+  if (d.item) { openItem(d.item); return; }
+  if (d.seg) { ui.listSeg = d.seg; render(); return; }
+  if (d.put) { putInIssue(S.items.find((i) => i.id === d.put)); render(); return; }
+  if (d.del) { S.items = S.items.filter((i) => i.id !== d.del); save(); render(); return; }
+  if (d.rec) { const r = REC.find((x) => x.id === +d.rec); if (addItem(r.title, r)) { toast("버킷리스트에 담았어요"); render(); } return; }
+  if (d.f) { const k = d.f; ui.f[k] = k === "season" ? !ui.f.season : ui.f[k] === d.v ? null : d.v; render(); return; }
+  if (d.vol) { ui.open = d.vol; render(); scrollTo(0, 0); return; }
+  if (d.do === "closeVol") { ui.open = null; render(); return; }
+  if (d.do === "nextMonth") { S.offset++; save(); ui.tab = "issue"; render(); toast(`${monthOf(curKey())}월이 됐어요 (테스트)`); return; }
+  if (d.do === "reset") { if (confirm("시안 데이터를 전부 지울까요?")) { localStorage.removeItem(KEY); indexedDB.deleteDatabase("mb-photos"); location.reload(); } return; }
+  if (d.do === "sample") { sample(); render(); return; }
+});
+$app.addEventListener("submit", (e) => {
+  if (e.target.id !== "addForm") return;
+  e.preventDefault();
+  const v = document.getElementById("addInp").value;
+  if (addItem(v)) { render(); document.getElementById("addInp").focus(); }
+});
+$app.addEventListener("input", (e) => {
+  if (e.target.id !== "q") return;
+  ui.f.q = e.target.value.trim();
+  const pos = e.target.selectionStart; render();
+  const q = document.getElementById("q"); q.focus(); q.setSelectionRange(pos, pos);
+});
+
+// 시안용 샘플: 지난 4개월 호를 채워서 책장이 어떻게 보이는지 확인
+function sample() {
+  const base = now(), picks = REC.filter((r) => r.seasonal);
+  const notes = ["생각보다 훨씬 좋았다", "왜 이제야 했을까", "다음 달에 또 가고 싶다", "사진보다 실제가 더 예뻤다", ""];
+  for (let back = 4; back >= 1; back--) {
+    const d = new Date(base.getFullYear(), base.getMonth() - back, 1), k = mk(d), m = d.getMonth() + 1;
+    if (S.issues[k]) continue;
+    const slots = [3, 5, 5, 8][back % 4];
+    S.issues[k] = { slots, created: d.toISOString() };
+    const pool = picks.filter((r) => r.months.includes(m)).sort(() => Math.random() - 0.5).slice(0, slots);
+    const doneCount = Math.max(1, slots - Math.floor(Math.random() * 3));
+    pool.forEach((r, n) => {
+      const it = { id: "b" + S.seq++, title: r.title, recId: r.id, tags: [r.type, r.time], issue: k, order: n, done: null, added: d.toISOString() };
+      if (n < doneCount) it.done = { date: new Date(d.getFullYear(), m - 1, 3 + n * 5).toISOString(), note: notes[n % notes.length], photo: false, color: COLORS[(n + back) % COLORS.length] };
+      S.items.push(it);
+    });
+  }
+  save(); toast("지난 4개월 샘플을 채웠어요");
+}
+
+fetch("data/buckets.json").then((r) => r.json()).then((d) => { REC = d; render(); }).catch(() => render());
+render();
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+</script>
+</body>
+</html>
